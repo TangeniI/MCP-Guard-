@@ -24,6 +24,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -42,6 +43,7 @@ type AuthRequest struct {
 type Decision struct {
 	Allow           bool
 	Unauthenticated bool   // denied because the caller could not be identified
+	NeedsApproval   bool   // denied only for want of a human's approval
 	Agent           string // who the caller is, if known
 	Code            string // stable machine-readable reason
 	Reason          string // human-readable reason; shown to the agent
@@ -63,10 +65,40 @@ func (AllowAll) Authorize(AuthRequest) Decision {
 	return Decision{Allow: true, Code: "allowed", PolicyVersion: "allow-all"}
 }
 
+// ApprovalRequest is a tool call the policy allows only with a human's consent.
+type ApprovalRequest struct {
+	Agent   string
+	Server  string
+	Message Message
+}
+
+// ApprovalOutcome is the result of asking. The zero value is a refusal.
+type ApprovalOutcome struct {
+	Approved bool
+	Code     string        // stable machine-readable outcome
+	Reason   string        // human-readable; shown to the agent when refused
+	ID       string        // approval request ID, for the audit log
+	By       string        // who decided, if a human did
+	Wait     time.Duration // how long the call was held
+}
+
+// Approver obtains a human decision. It blocks until there is one, and must
+// return a refusal when ctx is cancelled or its own time limit passes.
+type Approver interface {
+	RequestApproval(ctx context.Context, req ApprovalRequest) ApprovalOutcome
+}
+
+// Recorder stores the audit record of an exchange.
+type Recorder interface {
+	Record(Event) error
+}
+
 // Event describes one proxied exchange, emitted when the response is complete.
 type Event struct {
+	Time          time.Time // when the request arrived
 	Server        string
 	Agent         string
+	HTTPMethod    string
 	Message       Message
 	Status        int           // HTTP status sent to the client
 	Denied        bool          // true if the gateway refused it without calling upstream
@@ -74,6 +106,11 @@ type Event struct {
 	Reason        string        // why, when Denied
 	PolicyVersion string        //
 	Duration      time.Duration // total time in the gateway, including upstream
+
+	ApprovalID       string        // set when a human was asked
+	ApprovedBy       string        // who answered, if anyone did
+	ApprovalWait     time.Duration // time spent waiting for that answer
+	UpstreamDuration time.Duration // time spent in the MCP server; zero if never called
 }
 
 // Config configures a Handler.
@@ -85,6 +122,14 @@ type Config struct {
 	// Authorizer decides every exchange. Required: there is no implicit
 	// allow. Use AllowAll{} to run without a policy on purpose.
 	Authorizer Authorizer
+
+	// Approver handles tool calls that need a human. Nil means there is
+	// nobody to ask, so those calls are refused.
+	Approver Approver
+
+	// Audit, if set, stores a record of every exchange. If a record cannot
+	// be stored the gateway stops serving until one can: no audit, no calls.
+	Audit Recorder
 
 	// MaxBodyBytes caps client request bodies. Zero means DefaultMaxBodyBytes.
 	MaxBodyBytes int64
@@ -108,6 +153,7 @@ type Config struct {
 type Handler struct {
 	cfg       Config
 	mux       *http.ServeMux
+	auditDown atomic.Bool // the last audit record could not be stored
 	upstreams map[string]*httputil.ReverseProxy
 	origins   map[string]struct{}
 }
@@ -151,6 +197,10 @@ func New(cfg Config) (*Handler, error) {
 
 	h.mux.HandleFunc("/{server}/mcp", h.serveMCP)
 	h.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+		if h.auditDown.Load() {
+			http.Error(w, "audit log unavailable", http.StatusServiceUnavailable)
+			return
+		}
 		w.WriteHeader(http.StatusNoContent)
 	})
 	return h, nil
@@ -205,7 +255,7 @@ func (h *Handler) serveMCP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	name := r.PathValue("server")
 	rec := &statusRecorder{ResponseWriter: w}
-	ev := Event{Server: name}
+	ev := Event{Time: start, Server: name, HTTPMethod: r.Method}
 
 	defer func() {
 		ev.Status = rec.status()
@@ -224,6 +274,14 @@ func (h *Handler) serveMCP(w http.ResponseWriter, r *http.Request) {
 			"policy_version", ev.PolicyVersion,
 			"duration_ms", ev.Duration.Milliseconds(),
 		)
+		if h.cfg.Audit != nil {
+			if err := h.cfg.Audit.Record(ev); err != nil {
+				h.auditDown.Store(true)
+				h.cfg.Logger.Error("audit record not stored; refusing further calls until the log recovers", "err", err)
+			} else {
+				h.auditDown.Store(false)
+			}
+		}
 		if h.cfg.OnEvent != nil {
 			h.cfg.OnEvent(ev)
 		}
@@ -256,6 +314,26 @@ func (h *Handler) serveMCP(w http.ResponseWriter, r *http.Request) {
 		if reason == "" {
 			reason = "not allowed"
 		}
+		if d.NeedsApproval && msg.Kind == KindRequest && msg.Method == "tools/call" {
+			if h.cfg.Approver == nil {
+				ev.Code = "approval_unavailable"
+				reason += ", and no approver is configured"
+			} else {
+				out := h.cfg.Approver.RequestApproval(r.Context(), ApprovalRequest{Agent: d.Agent, Server: name, Message: msg})
+				ev.ApprovalID, ev.ApprovedBy, ev.ApprovalWait = out.ID, out.By, out.Wait
+				if out.Approved {
+					ev.Code = "approved"
+					return true
+				}
+				ev.Code = out.Code
+				if ev.Code == "" || ev.Code == "approved" {
+					ev.Code = "approval_denied"
+				}
+				if out.Reason != "" {
+					reason = out.Reason
+				}
+			}
+		}
 		switch {
 		case d.Unauthenticated:
 			rec.Header().Set("WWW-Authenticate", `Bearer realm="mcp-guard"`)
@@ -270,6 +348,12 @@ func (h *Handler) serveMCP(w http.ResponseWriter, r *http.Request) {
 			deny(http.StatusForbidden, &rpcError{codePolicyDenied, "MCP Guard: " + reason})
 		}
 		return false
+	}
+
+	if h.auditDown.Load() {
+		ev.Code = "audit_unavailable"
+		deny(http.StatusServiceUnavailable, &rpcError{codeUpstreamError, "MCP Guard: audit log unavailable; calls are refused until it recovers"})
+		return
 	}
 
 	upstream, ok := h.upstreams[name]
@@ -326,7 +410,9 @@ func (h *Handler) serveMCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	upstreamStart := time.Now()
 	upstream.ServeHTTP(rec, r)
+	ev.UpstreamDuration = time.Since(upstreamStart)
 }
 
 // originAllowed implements the Origin check the MCP spec requires of servers

@@ -3,6 +3,7 @@ package proxy_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -344,5 +345,79 @@ func TestNewRequiresAuthorizer(t *testing.T) {
 	_, err := proxy.New(proxy.Config{Upstreams: map[string]*url.URL{"a": mustURL(t, "http://127.0.0.1:9001")}})
 	if err == nil {
 		t.Error("a gateway with no authorizer must not start")
+	}
+}
+
+type flakyRecorder struct {
+	fail  atomic.Bool
+	calls atomic.Int64
+}
+
+func (f *flakyRecorder) Record(proxy.Event) error {
+	f.calls.Add(1)
+	if f.fail.Load() {
+		return errors.New("disk full")
+	}
+	return nil
+}
+
+// TestNoAuditNoCalls: when a record cannot be stored, the gateway stops
+// forwarding until the log works again.
+func TestNoAuditNoCalls(t *testing.T) {
+	var upstreamHits atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamHits.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"jsonrpc":"2.0","id":1,"result":{}}`)
+	}))
+	defer upstream.Close()
+
+	rec := &flakyRecorder{}
+	h, err := proxy.New(proxy.Config{
+		Upstreams:  map[string]*url.URL{"sample": mustURL(t, upstream.URL)},
+		Logger:     quietLogger(),
+		Authorizer: proxy.AllowAll{},
+		Audit:      rec,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	post := func() int {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/sample/mcp",
+			strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)))
+		return w.Code
+	}
+	health := func() int {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+		return w.Code
+	}
+
+	if code := post(); code != 200 || upstreamHits.Load() != 1 || health() != 204 {
+		t.Fatalf("healthy gateway: status %d, hits %d", code, upstreamHits.Load())
+	}
+
+	rec.fail.Store(true)
+	post() // this exchange completes, but its record is lost
+	for i := 0; i < 3; i++ {
+		if code := post(); code != http.StatusServiceUnavailable {
+			t.Errorf("with the audit log down: status %d, want 503", code)
+		}
+	}
+	if got := upstreamHits.Load(); got != 2 {
+		t.Errorf("upstream was called %d times; calls must stop once the audit log fails", got)
+	}
+	if health() != http.StatusServiceUnavailable {
+		t.Error("healthz should report the audit failure")
+	}
+
+	// Recovery: the next refusal is recorded, and service resumes.
+	rec.fail.Store(false)
+	if code := post(); code != http.StatusServiceUnavailable {
+		t.Errorf("first request after recovery: status %d, want 503", code)
+	}
+	if code := post(); code != 200 || health() != 204 {
+		t.Errorf("gateway did not recover: status %d", code)
 	}
 }
