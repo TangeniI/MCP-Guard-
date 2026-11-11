@@ -32,3 +32,5 @@ jobs:
         run: |
           go test ./internal/policy -run '^$' -fuzz '^FuzzParse$' -fuzztime 30s
           go test ./internal/proxy -run '^$' -fuzz '^FuzzInspect$' -fuzztime 30s
+          go test ./internal/proxy -run '^$' -fuzz '^FuzzScanEventStream$' -fuzztime 30s
+          go test ./internal/scan -run '^$' -fuzz '^FuzzRules$' -fuzztime 30s

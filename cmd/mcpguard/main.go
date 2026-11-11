@@ -28,8 +28,10 @@ import (
 	"github.com/TangeniI/MCP-Guard-/internal/approval"
 	"github.com/TangeniI/MCP-Guard-/internal/audit"
 	"github.com/TangeniI/MCP-Guard-/internal/guard"
+	"github.com/TangeniI/MCP-Guard-/internal/judge"
 	"github.com/TangeniI/MCP-Guard-/internal/policy"
 	"github.com/TangeniI/MCP-Guard-/internal/proxy"
+	"github.com/TangeniI/MCP-Guard-/internal/scan"
 )
 
 type upstreamFlags map[string]*url.URL
@@ -124,8 +126,39 @@ func run(logger *slog.Logger, args []string) error {
 	adminListen := fs.String("admin-listen", "", "address of the approval page; must not be reachable by agents")
 	fs.Var(approvers, "approver", "person who may approve calls, as name=sha256-of-their-token (repeatable)")
 	approvalTimeout := fs.Duration("approval-timeout", approval.DefaultTimeout, "how long a call waits for a human before it is refused")
+	scanMode := fs.String("scan", "rules", "tool-result scanning: rules, judge, rules+judge, or off")
+	judgeModel := fs.String("judge-model", judge.DefaultModel, "Claude model for the LLM judge")
+	judgeTimeout := fs.Duration("judge-timeout", scan.DefaultJudgeTimeout, "how long to wait for the judge before treating the result as unsafe")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+
+	// Result scanning. Turning it off has to be asked for by name.
+	var scanner proxy.Scanner
+	scanOpts := scan.Options{JudgeTimeout: *judgeTimeout}
+	switch *scanMode {
+	case "off":
+		logger.Warn("tool-result scanning is OFF")
+	case "rules":
+		scanOpts.Rules = true
+	case "judge":
+		scanOpts.Judge = judge.NewAnthropic(*judgeModel)
+	case "rules+judge":
+		scanOpts.Rules, scanOpts.Judge = true, judge.NewAnthropic(*judgeModel)
+	default:
+		return fmt.Errorf("-scan %q: want rules, judge, rules+judge or off", *scanMode)
+	}
+	if *scanMode != "off" {
+		s, err := scan.New(scanOpts)
+		if err != nil {
+			return err
+		}
+		scanner = guard.ResultScanner{Scanner: s}
+		if scanOpts.Judge != nil {
+			// Credentials come from the environment via the Anthropic SDK.
+			// If they are missing, every judged result is quarantined.
+			logger.Info("LLM judge enabled", "model", *judgeModel, "timeout", judgeTimeout.String())
+		}
 	}
 
 	// Bad configuration stops startup; the gateway never runs half-configured.
@@ -197,6 +230,7 @@ func run(logger *slog.Logger, args []string) error {
 		Upstreams:  upstreams,
 		Authorizer: authorizer,
 		Approver:   approver,
+		Scanner:    scanner,
 		Audit:      guard.AuditRecorder{Log: auditLog},
 		Logger:     logger,
 	})

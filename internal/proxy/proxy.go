@@ -107,6 +107,16 @@ type Event struct {
 	PolicyVersion string        //
 	Duration      time.Duration // total time in the gateway, including upstream
 
+	Scanned      bool          // the tool result was examined (or could not be)
+	Quarantined  bool          // the result was withheld from the model
+	ScanVerdict  string        // "clean", "injection", "unsure", ...
+	ScanSource   string        // which layer decided
+	ScanRule     string        // rule id, if a rule matched
+	ScanDetail   string        // match excerpt or judge's reason
+	ScanDuration time.Duration // time spent scanning
+	ResultBytes  int           // size of the tool result that was scanned
+	ResultSHA256 string        // its hash, to match against the server's own logs
+
 	ApprovalID       string        // set when a human was asked
 	ApprovedBy       string        // who answered, if anyone did
 	ApprovalWait     time.Duration // time spent waiting for that answer
@@ -126,6 +136,10 @@ type Config struct {
 	// Approver handles tool calls that need a human. Nil means there is
 	// nobody to ask, so those calls are refused.
 	Approver Approver
+
+	// Scanner examines tool results before the model sees them. Nil
+	// disables scanning, which must be a deliberate choice by the caller.
+	Scanner Scanner
 
 	// Audit, if set, stores a record of every exchange. If a record cannot
 	// be stored the gateway stops serving until one can: no audit, no calls.
@@ -235,17 +249,24 @@ func (h *Handler) newReverseProxy(name string, target *url.URL) *httputil.Revers
 			// The bearer token identifies the agent to the gateway.
 			// It is not the upstream's credential and must not leak.
 			pr.Out.Header.Del("Authorization")
+			// Let Go's transport negotiate (and undo) compression itself,
+			// so the response hook always sees plain bytes.
+			pr.Out.Header.Del("Accept-Encoding")
 		},
-		Transport:     h.cfg.Transport,
-		FlushInterval: -1, // SSE: forward every event as it arrives
-		ErrorLog:      slog.NewLogLogger(h.cfg.Logger.Handler(), slog.LevelWarn),
+		Transport:      h.cfg.Transport,
+		FlushInterval:  -1, // SSE: forward every event as it arrives
+		ModifyResponse: h.scanResponse,
+		ErrorLog:       slog.NewLogLogger(h.cfg.Logger.Handler(), slog.LevelWarn),
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			if errors.Is(r.Context().Err(), context.Canceled) {
 				return // the client went away; nobody to answer
 			}
 			h.cfg.Logger.Warn("upstream error", "server", name, "err", err)
-			msg, _ := r.Context().Value(ctxKey{}).(Message)
-			writeRPCError(w, http.StatusBadGateway, msg.ID,
+			var id json.RawMessage
+			if st, ok := r.Context().Value(ctxKey{}).(*exchange); ok {
+				id = st.msg.ID
+			}
+			writeRPCError(w, http.StatusBadGateway, id,
 				&rpcError{codeUpstreamError, "MCP Guard: upstream server unavailable"})
 		},
 	}
@@ -256,6 +277,7 @@ func (h *Handler) serveMCP(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("server")
 	rec := &statusRecorder{ResponseWriter: w}
 	ev := Event{Time: start, Server: name, HTTPMethod: r.Method}
+	st := &exchange{server: name}
 
 	defer func() {
 		ev.Status = rec.status()
@@ -272,6 +294,8 @@ func (h *Handler) serveMCP(w http.ResponseWriter, r *http.Request) {
 			"code", ev.Code,
 			"reason", ev.Reason,
 			"policy_version", ev.PolicyVersion,
+			"scan", ev.ScanVerdict,
+			"quarantined", ev.Quarantined,
 			"duration_ms", ev.Duration.Milliseconds(),
 		)
 		if h.cfg.Audit != nil {
@@ -304,6 +328,7 @@ func (h *Handler) serveMCP(w http.ResponseWriter, r *http.Request) {
 			Message:     msg,
 		})
 		ev.Agent, ev.Code, ev.PolicyVersion = d.Agent, d.Code, d.PolicyVersion
+		st.agent, st.msg = d.Agent, msg
 		if d.Allow {
 			return true
 		}
@@ -394,7 +419,7 @@ func (h *Handler) serveMCP(w http.ResponseWriter, r *http.Request) {
 		r.Body = io.NopCloser(bytes.NewReader(body))
 		r.ContentLength = int64(len(body))
 		r.TransferEncoding = nil
-		r = r.WithContext(context.WithValue(r.Context(), ctxKey{}, msg))
+		r = r.WithContext(context.WithValue(r.Context(), ctxKey{}, st))
 
 	case http.MethodGet, http.MethodDelete:
 		// Pre-2026-07-28 revisions: GET opens the server-to-client SSE
@@ -412,7 +437,10 @@ func (h *Handler) serveMCP(w http.ResponseWriter, r *http.Request) {
 
 	upstreamStart := time.Now()
 	upstream.ServeHTTP(rec, r)
-	ev.UpstreamDuration = time.Since(upstreamStart)
+	ev.UpstreamDuration = time.Since(upstreamStart) - st.scan.Duration
+	ev.Scanned, ev.Quarantined = st.scanned, st.quarantined
+	ev.ScanVerdict, ev.ScanSource, ev.ScanRule, ev.ScanDetail = st.scan.Verdict, st.scan.Source, st.scan.Rule, st.scan.Detail
+	ev.ScanDuration, ev.ResultBytes, ev.ResultSHA256 = st.scan.Duration, st.resultBytes, st.resultHash
 }
 
 // originAllowed implements the Origin check the MCP spec requires of servers

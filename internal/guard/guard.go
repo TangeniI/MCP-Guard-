@@ -11,6 +11,7 @@ import (
 	"github.com/TangeniI/MCP-Guard-/internal/audit"
 	"github.com/TangeniI/MCP-Guard-/internal/policy"
 	"github.com/TangeniI/MCP-Guard-/internal/proxy"
+	"github.com/TangeniI/MCP-Guard-/internal/scan"
 )
 
 // PolicyAuthorizer adapts a policy.Engine to proxy.Authorizer.
@@ -109,8 +110,35 @@ func (a AuditRecorder) Record(e proxy.Event) error {
 		ApprovalID:     e.ApprovalID,
 		ApprovedBy:     e.ApprovedBy,
 		ApprovalWaitUS: e.ApprovalWait.Microseconds(),
+		Scanned:        e.Scanned,
+		Quarantined:    e.Quarantined,
+		ScanVerdict:    e.ScanVerdict,
+		ScanSource:     e.ScanSource,
+		ScanRule:       e.ScanRule,
+		ScanDetail:     e.ScanDetail,
+		ScanUS:         e.ScanDuration.Microseconds(),
+		ResultBytes:    e.ResultBytes,
+		ResultSHA256:   e.ResultSHA256,
 		Status:         e.Status,
 		DurationUS:     e.Duration.Microseconds(),
 		UpstreamUS:     e.UpstreamDuration.Microseconds(),
 	})
+}
+
+// ResultScanner adapts a scan.Scanner to proxy.Scanner.
+type ResultScanner struct {
+	Scanner *scan.Scanner
+}
+
+// ScanResult implements proxy.Scanner.
+func (a ResultScanner) ScanResult(ctx context.Context, in proxy.ScanInput) proxy.ScanOutcome {
+	res := a.Scanner.Scan(ctx, in.Texts)
+	return proxy.ScanOutcome{
+		Clean:    res.Verdict == scan.Clean,
+		Verdict:  string(res.Verdict),
+		Source:   res.Source,
+		Rule:     res.Rule,
+		Detail:   res.Detail,
+		Duration: res.RulesDuration + res.JudgeDuration,
+	}
 }

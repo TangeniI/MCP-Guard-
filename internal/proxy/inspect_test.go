@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"go/parser"
 	"go/token"
@@ -105,3 +106,42 @@ func FuzzInspect(f *testing.F) {
 		}
 	})
 }
+
+// FuzzScanEventStream: the SSE filter must never panic, and with a scanner
+// that rejects everything no JSON-RPC result may come out unreplaced.
+func FuzzScanEventStream(f *testing.F) {
+	for _, s := range []string{
+		"data: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"SECRET\"}]}}\n\n",
+		"event: message\r\nid: 3\r\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\"}\r\n\r\n",
+		"data: {\"id\":1,\ndata: \"result\":\"SECRET\"}\n\n", ": comment\n\n", "data\n\n", "", "data: [1,2\n",
+		"data: {\"id\":1,\"result\":\"SECRET\"}\r\rdata: {\"id\":1,\"result\":\"SECRET\"}\r\r",
+		"data: x\rdata: {\"id\":1,\"result\":\"SECRET\"}",
+	} {
+		f.Add([]byte(s))
+	}
+	h := &Handler{cfg: Config{Scanner: rejectAll{}}}
+	f.Fuzz(func(t *testing.T, stream []byte) {
+		st := &exchange{msg: Message{Kind: KindRequest, Method: "tools/call", Tool: "t", ID: json.RawMessage("1")}}
+		out := h.scanEventStream(context.Background(), st, bytes.NewReader(stream))
+		// Read the output the way the most lenient client would: CRLF, LF
+		// and bare CR all end a line.
+		out = bytes.ReplaceAll(out, []byte("\r\n"), []byte("\n"))
+		out = bytes.ReplaceAll(out, []byte("\r"), []byte("\n"))
+		for _, block := range bytes.Split(out, []byte("\n\n")) {
+			var data []string
+			for _, line := range strings.Split(string(block), "\n") {
+				if v, ok := strings.CutPrefix(line, "data:"); ok {
+					data = append(data, strings.TrimPrefix(v, " "))
+				}
+			}
+			joined := strings.Join(data, "\n")
+			if isRPCResponse(joined) && !strings.Contains(joined, "was withheld") {
+				t.Fatalf("a response passed a scanner that rejects everything: %q", joined)
+			}
+		}
+	})
+}
+
+type rejectAll struct{}
+
+func (rejectAll) ScanResult(context.Context, ScanInput) ScanOutcome { return ScanOutcome{} }
