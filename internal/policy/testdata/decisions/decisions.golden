@@ -29,6 +29,6 @@ DENY   tool_not_allowed       agent=alpha  alpha tool name differs by case
 DENY   tool_not_allowed       agent=alpha  alpha tool name with trailing space
 DENY   tool_not_allowed       agent=alpha  alpha empty tool name
 DENY   tool_not_allowed       agent=alpha  alpha tool on server with no tools
-DENY   approval_unavailable   agent=alpha  alpha tool needing approval
+DENY   approval_required      agent=alpha  alpha tool needing approval
 DENY   tool_not_allowed       agent=beta   beta cannot use alpha's tool
 ALLOW  allowed                agent=beta   beta own tool

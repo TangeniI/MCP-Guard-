@@ -37,23 +37,26 @@ type Request struct {
 type Code string
 
 const (
-	CodeAllowed             Code = "allowed"
-	CodeUnauthenticated     Code = "unauthenticated"
-	CodeServerNotAllowed    Code = "server_not_allowed"
-	CodeMethodNotAllowed    Code = "method_not_allowed"
-	CodeToolNotAllowed      Code = "tool_not_allowed"
-	CodeApprovalUnavailable Code = "approval_unavailable"
-	CodeArgumentsRejected   Code = "arguments_rejected"
-	CodeRateLimited         Code = "rate_limited"
+	CodeAllowed           Code = "allowed"
+	CodeUnauthenticated   Code = "unauthenticated"
+	CodeServerNotAllowed  Code = "server_not_allowed"
+	CodeMethodNotAllowed  Code = "method_not_allowed"
+	CodeToolNotAllowed    Code = "tool_not_allowed"
+	CodeApprovalRequired  Code = "approval_required"
+	CodeArgumentsRejected Code = "arguments_rejected"
+	CodeRateLimited       Code = "rate_limited"
 )
 
 // Decision is the engine's answer.
 type Decision struct {
-	Allow      bool
-	Code       Code
-	Reason     string // human-readable; safe to show to the agent
-	Agent      string // empty if the caller was not identified
-	PolicyHash string
+	Allow bool
+	// NeedsApproval is set on a denial whose only missing piece is a
+	// human's approval. A caller that ignores it simply denies.
+	NeedsApproval bool
+	Code          Code
+	Reason        string // human-readable; safe to show to the agent
+	Agent         string // empty if the caller was not identified
+	PolicyHash    string
 }
 
 // baseMethods are the requests any agent may send to a server it is allowed
@@ -162,11 +165,6 @@ func (e *Engine) Decide(r Request) Decision {
 	if !ok || r.Tool == "" {
 		return deny(CodeToolNotAllowed, "tool "+quote(r.Tool)+" is not allowed for this agent")
 	}
-	if tool.RequiresApproval {
-		// The approval flow arrives in milestone 3. Until a human can
-		// say yes, the answer is no.
-		return deny(CodeApprovalUnavailable, "tool "+quote(r.Tool)+" requires human approval, which is not available")
-	}
 	if tool.Arguments != nil {
 		args, err := decodeArguments(r.Arguments)
 		if err != nil {
@@ -180,6 +178,12 @@ func (e *Engine) Decide(r Request) Decision {
 	// 5. Rate limit last, so refused calls do not use up the allowance.
 	if tool.RateLimit != nil && !e.take(bucketKey{agent.Name, r.Server, r.Tool}, tool.RateLimit.PerMinute) {
 		return deny(CodeRateLimited, "rate limit reached for tool "+quote(r.Tool))
+	}
+	// 6. Everything else passed; a human still has to say yes. This is a
+	// denial unless the caller knows how to obtain that approval.
+	if tool.RequiresApproval {
+		d.NeedsApproval = true
+		return deny(CodeApprovalRequired, "tool "+quote(r.Tool)+" requires human approval")
 	}
 	return e.allow(d)
 }
