@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MCP Guard policy",
+  "description": "Least-privilege policy for agents calling MCP servers through MCP Guard. Anything not listed is denied.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "agents"],
+  "properties": {
+    "version": { "const": 1 },
+    "agents": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/agent" }
+    }
+  },
+  "$defs": {
+    "agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "token_sha256", "servers"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$" },
+        "token_sha256": {
+          "description": "Lower-case hex SHA-256 of the agent's bearer token. The token itself never appears in the policy.",
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "servers": {
+          "description": "Servers this agent may reach, keyed by the gateway's server name.",
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/server" }
+        }
+      }
+    },
+    "server": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "methods": {
+          "description": "Extra JSON-RPC methods to allow beyond the protocol basics (for example resources/read).",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "tools": {
+          "description": "Tools this agent may call on this server, keyed by tool name.",
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/tool" }
+        }
+      }
+    },
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requires_approval": { "type": "boolean" },
+        "rate_limit": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["per_minute"],
+          "properties": {
+            "per_minute": { "type": "integer", "minimum": 1, "maximum": 100000 }
+          }
+        },
+        "arguments": {
+          "description": "Constraints per argument name. If present, arguments not listed are denied unless allow_other_arguments is true. If absent, arguments are not checked.",
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/constraint" }
+        },
+        "allow_other_arguments": { "type": "boolean" }
+      }
+    },
+    "constraint": {
+      "description": "All listed conditions must hold.",
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "equals": { "type": ["string", "number", "boolean"] },
+        "one_of": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": ["string", "number", "boolean"] }
+        },
+        "prefix": { "type": "string", "minLength": 1 },
+        "path_under": { "type": "string", "pattern": "^/" },
+        "email_domain": { "type": "string", "pattern": "^[A-Za-z0-9.-]+$" },
+        "pattern": { "type": "string", "minLength": 1 },
+        "max_length": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

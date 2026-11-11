@@ -1,8 +1,9 @@
 // Command mcpguard runs the MCP Guard gateway.
 //
-//	mcpguard -listen 127.0.0.1:8080 -upstream files=http://127.0.0.1:9001
+//	mcpguard -listen 127.0.0.1:8080 -policy policy.yaml -upstream sample=http://127.0.0.1:9001
 //
-// The agent then uses http://127.0.0.1:8080/files/mcp as its MCP endpoint.
+// The agent then uses http://127.0.0.1:8080/sample/mcp as its MCP endpoint,
+// sending its bearer token in the Authorization header.
 package main
 
 import (
@@ -19,6 +20,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/TangeniI/MCP-Guard-/internal/guard"
+	"github.com/TangeniI/MCP-Guard-/internal/policy"
 	"github.com/TangeniI/MCP-Guard-/internal/proxy"
 )
 
@@ -54,10 +57,41 @@ func run(logger *slog.Logger) error {
 	upstreams := upstreamFlags{}
 	listen := flag.String("listen", "127.0.0.1:8080", "address to listen on")
 	flag.Var(upstreams, "upstream", "MCP server as name=url (repeatable); served at /{name}/mcp")
+	policyPath := flag.String("policy", "", "path to the policy YAML file (required unless -insecure-allow-all)")
+	allowAll := flag.Bool("insecure-allow-all", false, "run with no policy and allow everything (evaluation baseline only)")
 	flag.Parse()
 
 	// Bad configuration stops startup; the gateway never runs half-configured.
-	handler, err := proxy.New(proxy.Config{Upstreams: upstreams, Logger: logger})
+	var authorizer proxy.Authorizer
+	switch {
+	case *allowAll && *policyPath != "":
+		return errors.New("-policy and -insecure-allow-all are mutually exclusive")
+	case *allowAll:
+		logger.Warn("running with NO policy: every call is allowed")
+		authorizer = proxy.AllowAll{}
+	case *policyPath == "":
+		return errors.New("no policy: pass -policy FILE (default deny has nothing to allow without one)")
+	default:
+		data, err := os.ReadFile(*policyPath)
+		if err != nil {
+			return fmt.Errorf("reading policy: %w", err)
+		}
+		pol, err := policy.Parse(data)
+		if err != nil {
+			return err
+		}
+		for _, agent := range pol.Agents {
+			for server := range agent.Servers {
+				if _, ok := upstreams[server]; !ok {
+					return fmt.Errorf("policy: agent %q refers to server %q, which has no -upstream", agent.Name, server)
+				}
+			}
+		}
+		logger.Info("policy loaded", "path", *policyPath, "policy_version", pol.Hash(), "agents", len(pol.Agents))
+		authorizer = guard.PolicyAuthorizer{Engine: policy.NewEngine(pol)}
+	}
+
+	handler, err := proxy.New(proxy.Config{Upstreams: upstreams, Authorizer: authorizer, Logger: logger})
 	if err != nil {
 		return err
 	}

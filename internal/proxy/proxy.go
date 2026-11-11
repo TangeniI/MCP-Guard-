@@ -23,20 +23,57 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strings"
 	"time"
 )
 
 // DefaultMaxBodyBytes caps a client request body (4 MiB, the Go SDK's default).
 const DefaultMaxBodyBytes = 4 << 20
 
+// AuthRequest is what the proxy asks an Authorizer about.
+type AuthRequest struct {
+	Server      string  // gateway server name from the URL
+	BearerToken string  // from the Authorization header; empty if absent
+	HTTPMethod  string  // POST, GET or DELETE
+	Message     Message // zero for GET and DELETE
+}
+
+// Decision is an Authorizer's answer. The zero value is a denial.
+type Decision struct {
+	Allow           bool
+	Unauthenticated bool   // denied because the caller could not be identified
+	Agent           string // who the caller is, if known
+	Code            string // stable machine-readable reason
+	Reason          string // human-readable reason; shown to the agent
+	PolicyVersion   string // which policy produced this decision
+}
+
+// Authorizer decides whether an exchange may proceed. The proxy depends on
+// this interface only; it never imports the policy package.
+type Authorizer interface {
+	Authorize(AuthRequest) Decision
+}
+
+// AllowAll is an Authorizer that permits everything. It exists for the
+// "guard off" baseline in evaluations and must be chosen explicitly.
+type AllowAll struct{}
+
+// Authorize implements Authorizer.
+func (AllowAll) Authorize(AuthRequest) Decision {
+	return Decision{Allow: true, Code: "allowed", PolicyVersion: "allow-all"}
+}
+
 // Event describes one proxied exchange, emitted when the response is complete.
 type Event struct {
-	Server   string
-	Message  Message
-	Status   int           // HTTP status sent to the client
-	Denied   bool          // true if the gateway refused it without calling upstream
-	Reason   string        // why, when Denied
-	Duration time.Duration // total time in the gateway, including upstream
+	Server        string
+	Agent         string
+	Message       Message
+	Status        int           // HTTP status sent to the client
+	Denied        bool          // true if the gateway refused it without calling upstream
+	Code          string        // decision code, or "invalid" for malformed requests
+	Reason        string        // why, when Denied
+	PolicyVersion string        //
+	Duration      time.Duration // total time in the gateway, including upstream
 }
 
 // Config configures a Handler.
@@ -44,6 +81,10 @@ type Config struct {
 	// Upstreams maps a server name to its MCP endpoint URL. The agent
 	// reaches a server at /{name}/mcp. Names not listed here do not exist.
 	Upstreams map[string]*url.URL
+
+	// Authorizer decides every exchange. Required: there is no implicit
+	// allow. Use AllowAll{} to run without a policy on purpose.
+	Authorizer Authorizer
 
 	// MaxBodyBytes caps client request bodies. Zero means DefaultMaxBodyBytes.
 	MaxBodyBytes int64
@@ -78,6 +119,9 @@ type ctxKey struct{}
 func New(cfg Config) (*Handler, error) {
 	if len(cfg.Upstreams) == 0 {
 		return nil, errors.New("proxy: no upstream servers configured")
+	}
+	if cfg.Authorizer == nil {
+		return nil, errors.New("proxy: no authorizer configured")
 	}
 	if cfg.MaxBodyBytes <= 0 {
 		cfg.MaxBodyBytes = DefaultMaxBodyBytes
@@ -138,6 +182,9 @@ func (h *Handler) newReverseProxy(name string, target *url.URL) *httputil.Revers
 			pr.Out.URL.RawPath = target.RawPath
 			pr.Out.URL.RawQuery = target.RawQuery
 			pr.Out.Host = target.Host
+			// The bearer token identifies the agent to the gateway.
+			// It is not the upstream's credential and must not leak.
+			pr.Out.Header.Del("Authorization")
 		},
 		Transport:     h.cfg.Transport,
 		FlushInterval: -1, // SSE: forward every event as it arrives
@@ -169,9 +216,12 @@ func (h *Handler) serveMCP(w http.ResponseWriter, r *http.Request) {
 			"kind", string(ev.Message.Kind),
 			"rpc_method", ev.Message.Method,
 			"tool", ev.Message.Tool,
+			"agent", ev.Agent,
 			"status", ev.Status,
 			"denied", ev.Denied,
+			"code", ev.Code,
 			"reason", ev.Reason,
+			"policy_version", ev.PolicyVersion,
 			"duration_ms", ev.Duration.Milliseconds(),
 		)
 		if h.cfg.OnEvent != nil {
@@ -181,7 +231,45 @@ func (h *Handler) serveMCP(w http.ResponseWriter, r *http.Request) {
 
 	deny := func(status int, e *rpcError) {
 		ev.Denied, ev.Reason = true, e.Message
+		if ev.Code == "" {
+			ev.Code = "invalid"
+		}
 		writeRPCError(rec, status, ev.Message.ID, e)
+	}
+
+	// authorize asks the Authorizer and, on a denial, answers the client.
+	authorize := func(msg Message) bool {
+		d := h.cfg.Authorizer.Authorize(AuthRequest{
+			Server:      name,
+			BearerToken: bearerToken(r),
+			HTTPMethod:  r.Method,
+			Message:     msg,
+		})
+		ev.Agent, ev.Code, ev.PolicyVersion = d.Agent, d.Code, d.PolicyVersion
+		if d.Allow {
+			return true
+		}
+		if ev.Code == "" {
+			ev.Code = "denied"
+		}
+		reason := d.Reason
+		if reason == "" {
+			reason = "not allowed"
+		}
+		switch {
+		case d.Unauthenticated:
+			rec.Header().Set("WWW-Authenticate", `Bearer realm="mcp-guard"`)
+			deny(http.StatusUnauthorized, &rpcError{codePolicyDenied, "MCP Guard: " + reason})
+		case msg.Kind == KindRequest && msg.Method == "tools/call":
+			// A refused tool call is answered as a failed tool result,
+			// not a transport error: the model sees why and can carry
+			// on with the rest of its task.
+			ev.Denied, ev.Reason = true, reason
+			writeToolDenied(rec, msg.ID, "Denied by MCP Guard policy: "+reason)
+		default:
+			deny(http.StatusForbidden, &rpcError{codePolicyDenied, "MCP Guard: " + reason})
+		}
+		return false
 	}
 
 	upstream, ok := h.upstreams[name]
@@ -215,6 +303,9 @@ func (h *Handler) serveMCP(w http.ResponseWriter, r *http.Request) {
 			deny(http.StatusBadRequest, rpcErr)
 			return
 		}
+		if !authorize(msg) {
+			return
+		}
 		// Forward exactly the bytes that were inspected.
 		r.Body = io.NopCloser(bytes.NewReader(body))
 		r.ContentLength = int64(len(body))
@@ -225,6 +316,9 @@ func (h *Handler) serveMCP(w http.ResponseWriter, r *http.Request) {
 		// Pre-2026-07-28 revisions: GET opens the server-to-client SSE
 		// stream and DELETE ends a session. Neither carries a client
 		// message, so there is nothing to inspect. Newer servers answer 405.
+		if !authorize(Message{}) {
+			return
+		}
 
 	default:
 		rec.Header().Set("Allow", "POST, GET, DELETE")
@@ -255,6 +349,35 @@ func (h *Handler) originAllowed(r *http.Request) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+// bearerToken returns the token from "Authorization: Bearer <token>".
+func bearerToken(r *http.Request) string {
+	scheme, token, ok := strings.Cut(r.Header.Get("Authorization"), " ")
+	if !ok || !strings.EqualFold(scheme, "Bearer") {
+		return ""
+	}
+	return strings.TrimSpace(token)
+}
+
+// writeToolDenied answers a tools/call with a tool result marked as an error.
+func writeToolDenied(w http.ResponseWriter, id json.RawMessage, text string) {
+	type content struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	type result struct {
+		Content []content `json:"content"`
+		IsError bool      `json:"isError"`
+	}
+	body, _ := json.Marshal(struct {
+		JSONRPC string          `json:"jsonrpc"`
+		ID      json.RawMessage `json:"id"`
+		Result  result          `json:"result"`
+	}{"2.0", id, result{[]content{{"text", text}}, true}})
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
 }
 
 func writeRPCError(w http.ResponseWriter, status int, id json.RawMessage, e *rpcError) {
