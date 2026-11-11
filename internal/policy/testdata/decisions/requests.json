@@ -1,0 +1,40 @@
+[
+  {"name": "no token", "request": {"server": "files", "kind": "request", "method": "tools/list"}},
+  {"name": "unknown token", "request": {"token": "wrong", "server": "files", "kind": "request", "method": "tools/list"}},
+  {"name": "token hash is not a token", "request": {"token": "05272b9d20f61cbfc976ef4e81c93161fd0224f7a4ccb1f5e92dfa7241a61bb5", "server": "files", "kind": "request", "method": "tools/list"}},
+  {"name": "token with trailing space", "request": {"token": "test-token-alpha ", "server": "files", "kind": "request", "method": "tools/list"}},
+
+  {"name": "alpha initialize", "request": {"token": "test-token-alpha", "server": "files", "kind": "request", "method": "initialize"}},
+  {"name": "alpha ping", "request": {"token": "test-token-alpha", "server": "files", "kind": "request", "method": "ping"}},
+  {"name": "alpha discover", "request": {"token": "test-token-alpha", "server": "files", "kind": "request", "method": "server/discover"}},
+  {"name": "alpha tools/list", "request": {"token": "test-token-alpha", "server": "files", "kind": "request", "method": "tools/list"}},
+  {"name": "alpha initialized notification", "request": {"token": "test-token-alpha", "server": "files", "kind": "notification", "method": "notifications/initialized"}},
+  {"name": "alpha response to server request", "request": {"token": "test-token-alpha", "server": "files", "kind": "response"}},
+  {"name": "alpha GET stream", "request": {"token": "test-token-alpha", "server": "files", "kind": "stream"}},
+
+  {"name": "alpha unknown server", "request": {"token": "test-token-alpha", "server": "payments", "kind": "request", "method": "tools/list"}},
+  {"name": "alpha server name differs by case", "request": {"token": "test-token-alpha", "server": "Files", "kind": "request", "method": "tools/list"}},
+  {"name": "alpha GET stream on unknown server", "request": {"token": "test-token-alpha", "server": "payments", "kind": "stream"}},
+  {"name": "beta cannot reach mail", "request": {"token": "test-token-beta", "server": "mail", "kind": "request", "method": "tools/list"}},
+
+  {"name": "alpha extra method allowed by policy", "request": {"token": "test-token-alpha", "server": "files", "kind": "request", "method": "resources/list"}},
+  {"name": "alpha method not in policy", "request": {"token": "test-token-alpha", "server": "files", "kind": "request", "method": "resources/read"}},
+  {"name": "beta lacks alpha's extra method", "request": {"token": "test-token-beta", "server": "files", "kind": "request", "method": "resources/list"}},
+  {"name": "extra method does not carry to another server", "request": {"token": "test-token-alpha", "server": "mail", "kind": "request", "method": "resources/list"}},
+  {"name": "empty method", "request": {"token": "test-token-alpha", "server": "files", "kind": "request", "method": ""}},
+  {"name": "method differs by case", "request": {"token": "test-token-alpha", "server": "files", "kind": "request", "method": "Tools/List"}},
+  {"name": "non-notification method sent as notification", "request": {"token": "test-token-alpha", "server": "files", "kind": "notification", "method": "tools/call", "tool": "read_file"}},
+  {"name": "unknown kind", "request": {"token": "test-token-alpha", "server": "files", "kind": "telepathy", "method": "tools/list"}},
+  {"name": "missing kind", "request": {"token": "test-token-alpha", "server": "files", "method": "tools/list"}},
+
+  {"name": "alpha allowed tool", "request": {"token": "test-token-alpha", "server": "files", "kind": "request", "method": "tools/call", "tool": "read_file", "arguments": {"path": "/workspace/notes.txt"}}},
+  {"name": "alpha allowed tool without arguments", "request": {"token": "test-token-alpha", "server": "files", "kind": "request", "method": "tools/call", "tool": "read_file"}},
+  {"name": "alpha tool not in policy", "request": {"token": "test-token-alpha", "server": "files", "kind": "request", "method": "tools/call", "tool": "write_file"}},
+  {"name": "alpha tool name differs by case", "request": {"token": "test-token-alpha", "server": "files", "kind": "request", "method": "tools/call", "tool": "Read_File"}},
+  {"name": "alpha tool name with trailing space", "request": {"token": "test-token-alpha", "server": "files", "kind": "request", "method": "tools/call", "tool": "read_file "}},
+  {"name": "alpha empty tool name", "request": {"token": "test-token-alpha", "server": "files", "kind": "request", "method": "tools/call", "tool": ""}},
+  {"name": "alpha tool on server with no tools", "request": {"token": "test-token-alpha", "server": "mail", "kind": "request", "method": "tools/call", "tool": "read_file"}},
+  {"name": "alpha tool needing approval", "request": {"token": "test-token-alpha", "server": "files", "kind": "request", "method": "tools/call", "tool": "delete_file"}},
+  {"name": "beta cannot use alpha's tool", "request": {"token": "test-token-beta", "server": "files", "kind": "request", "method": "tools/call", "tool": "read_file"}},
+  {"name": "beta own tool", "request": {"token": "test-token-beta", "server": "files", "kind": "request", "method": "tools/call", "tool": "list_files"}}
+]

@@ -17,6 +17,7 @@ const (
 	codeInvalidParams  = -32602
 	codeHeaderMismatch = -32020 // MCP 2026-07-28: header disagrees with body
 	codeUpstreamError  = -32000 // gateway-defined: upstream unreachable
+	codePolicyDenied   = -32001 // gateway-defined: refused by policy
 )
 
 // maxJSONDepth bounds nesting so a hostile body cannot exhaust the stack.
@@ -39,6 +40,10 @@ type Message struct {
 	Method string          // empty for responses
 	ID     json.RawMessage // nil for notifications
 	Tool   string          // params.name, set only for tools/call
+
+	// Arguments is params.arguments for tools/call, exactly as sent. It
+	// is nil when the call has none, and otherwise always a JSON object.
+	Arguments json.RawMessage
 }
 
 type rpcError struct {
@@ -106,6 +111,12 @@ func inspect(body []byte) (Message, *rpcError) {
 		}
 		if err := json.Unmarshal(params["name"], &m.Tool); err != nil || m.Tool == "" {
 			return m, &rpcError{codeInvalidParams, "tools/call requires a non-empty string \"params.name\""}
+		}
+		if raw, ok := params["arguments"]; ok {
+			if !bytes.HasPrefix(bytes.TrimLeft(raw, " \t\r\n"), []byte("{")) {
+				return m, &rpcError{codeInvalidParams, "tools/call \"params.arguments\" must be an object"}
+			}
+			m.Arguments = raw
 		}
 	}
 	return m, nil

@@ -1,0 +1,20 @@
+# Policy for the golden decision tests. Tokens are fixed test strings:
+#   alpha: test-token-alpha    beta: test-token-beta
+version: 1
+agents:
+  - name: alpha
+    token_sha256: 05272b9d20f61cbfc976ef4e81c93161fd0224f7a4ccb1f5e92dfa7241a61bb5
+    servers:
+      files:
+        methods: [resources/list]
+        tools:
+          read_file: {}
+          delete_file:
+            requires_approval: true
+      mail: {}
+  - name: beta
+    token_sha256: 09454e35b80939a2d12023fad0ea0f343068522fb530476d6b7f47dd4d2720b5
+    servers:
+      files:
+        tools:
+          list_files: {}

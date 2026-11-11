@@ -86,9 +86,10 @@ func TestPassThrough(t *testing.T) {
 
 	var log eventLog
 	h, err := proxy.New(proxy.Config{
-		Upstreams: map[string]*url.URL{"sample": mustURL(t, upstream.URL)},
-		Logger:    quietLogger(),
-		OnEvent:   log.add,
+		Upstreams:  map[string]*url.URL{"sample": mustURL(t, upstream.URL)},
+		Logger:     quietLogger(),
+		Authorizer: proxy.AllowAll{},
+		OnEvent:    log.add,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -179,6 +180,7 @@ func TestRejections(t *testing.T) {
 	h, err := proxy.New(proxy.Config{
 		Upstreams:    map[string]*url.URL{"sample": mustURL(t, upstream.URL)},
 		Logger:       quietLogger(),
+		Authorizer:   proxy.AllowAll{},
 		MaxBodyBytes: 1024,
 	})
 	if err != nil {
@@ -296,8 +298,9 @@ func TestUpstreamDown(t *testing.T) {
 	dead.Close()
 
 	h, err := proxy.New(proxy.Config{
-		Upstreams: map[string]*url.URL{"sample": mustURL(t, deadURL)},
-		Logger:    quietLogger(),
+		Upstreams:  map[string]*url.URL{"sample": mustURL(t, deadURL)},
+		Logger:     quietLogger(),
+		Authorizer: proxy.AllowAll{},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -330,9 +333,16 @@ func TestNewRejectsBadConfig(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, err := proxy.New(proxy.Config{Upstreams: tt.upstreams}); err == nil {
+			if _, err := proxy.New(proxy.Config{Upstreams: tt.upstreams, Authorizer: proxy.AllowAll{}}); err == nil {
 				t.Error("want an error, got nil")
 			}
 		})
+	}
+}
+
+func TestNewRequiresAuthorizer(t *testing.T) {
+	_, err := proxy.New(proxy.Config{Upstreams: map[string]*url.URL{"a": mustURL(t, "http://127.0.0.1:9001")}})
+	if err == nil {
+		t.Error("a gateway with no authorizer must not start")
 	}
 }
