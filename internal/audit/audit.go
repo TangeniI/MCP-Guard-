@@ -53,6 +53,16 @@ type Record struct {
 	ApprovedBy     string `json:"approval_by,omitempty"`
 	ApprovalWaitUS int64  `json:"approval_wait_us,omitempty"`
 
+	Scanned      bool   `json:"scanned,omitempty"`
+	Quarantined  bool   `json:"quarantined,omitempty"`
+	ScanVerdict  string `json:"scan_verdict,omitempty"`
+	ScanSource   string `json:"scan_source,omitempty"`
+	ScanRule     string `json:"scan_rule,omitempty"`
+	ScanDetail   string `json:"scan_detail,omitempty"`
+	ScanUS       int64  `json:"scan_us,omitempty"`
+	ResultBytes  int    `json:"result_bytes,omitempty"`
+	ResultSHA256 string `json:"result_sha256,omitempty"`
+
 	Status     int   `json:"status"`
 	DurationUS int64 `json:"duration_us"`           // whole exchange, microseconds
 	UpstreamUS int64 `json:"upstream_us,omitempty"` // time spent in the MCP server

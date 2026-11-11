@@ -118,8 +118,8 @@ func TestPassThrough(t *testing.T) {
 	if string(gotJSON) != string(wantJSON) {
 		t.Errorf("tool list changed by gateway:\n got %s\nwant %s", gotJSON, wantJSON)
 	}
-	if len(gotTools.Tools) != 2 {
-		t.Errorf("want 2 tools, got %d", len(gotTools.Tools))
+	if len(gotTools.Tools) != 3 {
+		t.Errorf("want 3 tools, got %d", len(gotTools.Tools))
 	}
 
 	// A text result passes through, including non-ASCII.

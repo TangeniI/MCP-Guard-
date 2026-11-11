@@ -141,8 +141,8 @@ func TestPolicyEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListTools: %v", err)
 	}
-	if len(tools.Tools) != 2 {
-		t.Errorf("want 2 tools listed, got %d", len(tools.Tools))
+	if len(tools.Tools) != 3 {
+		t.Errorf("want 3 tools listed, got %d", len(tools.Tools))
 	}
 
 	// The allowed tool works.
