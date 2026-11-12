@@ -17,6 +17,9 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: No credentials in the repository
+        run: scripts/check-secrets.sh
+
       - name: Format
         run: test -z "$(gofmt -l .)"
 
