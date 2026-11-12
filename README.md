@@ -161,7 +161,7 @@ supplies their own, through the provider's usual environment variable.
 - Built with heavy AI assistance, including the argument matcher that the project brief had set aside to be
   written by hand. Read `internal/policy/argmatch.go` and its tests before relying on it.
 - The LLM judge has never been run against the real API; its accuracy and cost are unknown.
-- The Docker image has not been built on a real Docker daemon; the Helm chart passes `helm lint` and renders
-  but has not been installed on a cluster.
+- The Docker image is built and started in CI. The compose demo has only been run as the same processes
+  outside Docker, and the Helm chart passes `helm lint` and renders but has not been installed on a cluster.
 - SQLite only for the audit log; rate limits, tool pins and pending approvals are in memory, per process.
 - Not compared against any other gateway.
