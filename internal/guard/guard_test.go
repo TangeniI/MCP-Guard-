@@ -179,7 +179,19 @@ func TestPolicyEndToEnd(t *testing.T) {
 	}
 
 	// Every event is attributed to alpha and stamped with a policy version;
-	// the only denial is the add call.
+	// the only denial is the add call. Events are recorded just after the
+	// response is sent, so wait for the last one.
+	sawAdd := func() bool {
+		for _, e := range h.snapshot() {
+			if e.Message.Tool == "add" {
+				return true
+			}
+		}
+		return false
+	}
+	for deadline := time.Now().Add(5 * time.Second); !sawAdd() && time.Now().Before(deadline); {
+		time.Sleep(5 * time.Millisecond)
+	}
 	var denied []string
 	for _, e := range h.snapshot() {
 		if e.Agent != "alpha" || len(e.PolicyVersion) != 64 {

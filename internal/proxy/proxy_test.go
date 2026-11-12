@@ -149,7 +149,19 @@ func TestPassThrough(t *testing.T) {
 	}
 
 	// The gateway saw every tool call, with the tool name it will later
-	// make decisions on.
+	// make decisions on. An exchange is recorded just after its response is
+	// sent, so give the last record a moment to land.
+	countCalls := func() (n int) {
+		for _, e := range log.snapshot() {
+			if e.Message.Method == "tools/call" {
+				n++
+			}
+		}
+		return n
+	}
+	for deadline := time.Now().Add(5 * time.Second); countCalls() < 3 && time.Now().Before(deadline); {
+		time.Sleep(5 * time.Millisecond)
+	}
 	var calls []string
 	for _, e := range log.snapshot() {
 		if e.Server != "sample" {
