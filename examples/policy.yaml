@@ -1,0 +1,24 @@
+# Example MCP Guard policy. Anything not listed here is denied.
+#
+# Run it against the sample server:
+#   go run ./cmd/sampleserver -listen 127.0.0.1:9001
+#   go run ./cmd/mcpguard -policy examples/policy.yaml -upstream sample=http://127.0.0.1:9001
+#
+# The token below is a public demo value, not a secret:
+#   token:  demo-token-not-a-secret
+#   sha256: printf '%s' demo-token-not-a-secret | shasum -a 256
+# For real use, generate a random token and store only its hash here.
+version: 1
+
+agents:
+  - name: demo-agent
+    token_sha256: 44208d1d531756cedf3af84a5bf971bb1e99ad1ec275a5141f599239d7e31313
+    servers:
+      sample:
+        tools:
+          # Allowed with any arguments.
+          echo: {}
+          # Allowed, at most 30 calls a minute.
+          add:
+            rate_limit:
+              per_minute: 30

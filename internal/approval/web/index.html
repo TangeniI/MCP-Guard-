@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MCP Guard approvals</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header>
+    <h1>MCP Guard approvals</h1>
+    <p id="status" role="status">Enter your approver token to see pending tool calls.</p>
+  </header>
+
+  <form id="signin" autocomplete="off">
+    <label for="token">Approver token</label>
+    <input id="token" type="password" required>
+    <button type="submit">Sign in</button>
+  </form>
+
+  <main id="queue" hidden>
+    <p id="empty">No tool calls are waiting.</p>
+    <ul id="pending"></ul>
+    <button id="signout" type="button" class="quiet">Sign out</button>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

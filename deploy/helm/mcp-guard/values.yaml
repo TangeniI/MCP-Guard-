@@ -1,0 +1,38 @@
+image:
+  repository: ghcr.io/tangenii/mcp-guard   # build and push the Dockerfile; no image is published yet
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+replicaCount: 1   # rate limits, tool pins and pending approvals are in memory, per replica
+
+# MCP servers the gateway fronts: name -> URL.
+upstreams: {}
+#  notes: http://notes.default.svc:9001
+
+# Tool-result scanning: rules, judge, rules+judge or off.
+scan: rules
+pinTools: true
+
+# The policy file, verbatim. The gateway refuses to start without a valid one.
+policy: |
+  version: 1
+  agents: []
+
+# People who may approve calls: name -> SHA-256 (hex) of their token.
+# Leave empty to disable approvals; tools that require approval are then always refused.
+approvers: {}
+approvalTimeout: 2m
+
+audit:
+  # The audit log is a SQLite file. Without persistence it is lost when the pod restarts.
+  persistence:
+    enabled: false
+    size: 1Gi
+    storageClass: ""
+
+service:
+  port: 8080        # agents connect here
+  adminPort: 8081   # approval page; keep it off any network agents can reach
+  metricsPort: 9090
+
+resources: {}

@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: No credentials in the repository
+        run: scripts/check-secrets.sh
+
+      - name: Format
+        run: test -z "$(gofmt -l .)"
+
+      - name: Vet
+        run: go vet ./...
+
+      # Includes the architecture check (the proxy may not import policy)
+      # and the golden decision files.
+      - name: Test
+        run: go test -race -count=1 -timeout 120s ./...
+
+      - name: Fuzz (short)
+        run: |
+          go test ./internal/policy -run '^$' -fuzz '^FuzzParse$' -fuzztime 30s
+          go test ./internal/policy -run '^$' -fuzz '^FuzzMatchArguments$' -fuzztime 30s
+          go test ./internal/proxy -run '^$' -fuzz '^FuzzInspect$' -fuzztime 30s
+          go test ./internal/proxy -run '^$' -fuzz '^FuzzScanEventStream$' -fuzztime 30s
+          go test ./internal/scan -run '^$' -fuzz '^FuzzRules$' -fuzztime 30s
+
+      - name: Helm chart renders
+        run: |
+          helm lint deploy/helm/mcp-guard
+          helm template ci deploy/helm/mcp-guard > /dev/null
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Docker image builds and the gateway starts
+        run: |
+          docker build -t mcp-guard:ci .
+          docker run --rm mcp-guard:ci -h 2>&1 | grep -q -- '-policy'
