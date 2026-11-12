@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    app.kubernetes.io/name: mcp-guard
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-guard
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mcp-guard
+        app.kubernetes.io/instance: {{ .Release.Name }}
+      annotations:
+        # Restart when the policy changes: it is read once, at startup.
+        checksum/policy: {{ .Values.policy | sha256sum }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 65532
+      containers:
+        - name: mcp-guard
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - -listen=0.0.0.0:{{ .Values.service.port }}
+            - -metrics-listen=0.0.0.0:{{ .Values.service.metricsPort }}
+            - -policy=/etc/mcpguard/policy.yaml
+            - -audit-db=/var/lib/mcpguard/audit.db
+            - -scan={{ .Values.scan }}
+            - -pin-tools={{ .Values.pinTools }}
+            {{- range $name, $url := .Values.upstreams }}
+            - -upstream={{ $name }}={{ $url }}
+            {{- end }}
+            {{- if .Values.approvers }}
+            - -admin-listen=0.0.0.0:{{ .Values.service.adminPort }}
+            - -approval-timeout={{ .Values.approvalTimeout }}
+            {{- range $name, $hash := .Values.approvers }}
+            - -approver={{ $name }}={{ $hash }}
+            {{- end }}
+            {{- end }}
+          ports:
+            - {name: mcp, containerPort: {{ .Values.service.port }}}
+            - {name: metrics, containerPort: {{ .Values.service.metricsPort }}}
+            {{- if .Values.approvers }}
+            - {name: admin, containerPort: {{ .Values.service.adminPort }}}
+            {{- end }}
+          readinessProbe:
+            httpGet: {path: /healthz, port: mcp}
+          livenessProbe:
+            httpGet: {path: /healthz, port: mcp}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          resources:
+{{ toYaml .Values.resources | indent 12 }}
+          volumeMounts:
+            - {name: policy, mountPath: /etc/mcpguard, readOnly: true}
+            - {name: audit, mountPath: /var/lib/mcpguard}
+      volumes:
+        - name: policy
+          configMap:
+            name: {{ .Release.Name }}-policy
+        - name: audit
+          {{- if .Values.audit.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-audit
+          {{- else }}
+          emptyDir: {}
+          {{- end }}

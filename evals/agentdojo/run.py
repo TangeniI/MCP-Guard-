@@ -373,7 +373,7 @@ def run_suite(suite_name: str, suite, args, binary: Path, run_dir: Path) -> dict
                 error = None
                 try:
                     utility, security = suite.run_task_with_pipeline(pipeline_for(task), task, inj_task, injections)
-                except (QuotaExhausted, GatewayError):
+                except (QuotaExhausted, GatewayError, OSError):
                     raise  # the run itself is broken; never score that as a task failure
                 except Exception as e:  # a model or tool failure counts against the run, visibly
                     if llm is None:
@@ -396,11 +396,11 @@ def run_suite(suite_name: str, suite, args, binary: Path, run_dir: Path) -> dict
                 outcome = f"utility={row['utility']}" + ("" if inj_id is None else f" attack_succeeded={row['attack_succeeded']}")
                 if llm is not None or inj_id is None:
                     print(f"  {suite_name} {task_id} {kind}: {outcome}" + (f" ERROR {error}" if error else ""), flush=True)
-    except (QuotaExhausted, GatewayError, KeyboardInterrupt) as e:
+    except (QuotaExhausted, GatewayError, OSError, KeyboardInterrupt) as e:
         if isinstance(e, KeyboardInterrupt):
             stopped = "interrupted by user"
-        elif isinstance(e, GatewayError):
-            stopped = f"gateway failure: {e}"
+        elif isinstance(e, (GatewayError, OSError)):
+            stopped = f"infrastructure failure: {type(e).__name__}: {e}"
         else:
             stopped = f"provider quota exhausted: {e}"
     finally:
