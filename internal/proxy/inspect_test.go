@@ -122,7 +122,7 @@ func FuzzScanEventStream(f *testing.F) {
 	h := &Handler{cfg: Config{Scanner: rejectAll{}}}
 	f.Fuzz(func(t *testing.T, stream []byte) {
 		st := &exchange{msg: Message{Kind: KindRequest, Method: "tools/call", Tool: "t", ID: json.RawMessage("1")}}
-		out := h.scanEventStream(context.Background(), st, bytes.NewReader(stream))
+		out := h.scanEventStream(context.Background(), st, bytes.NewReader(stream), h.scanMessage)
 		// Read the output the way the most lenient client would: CRLF, LF
 		// and bare CR all end a line.
 		out = bytes.ReplaceAll(out, []byte("\r\n"), []byte("\n"))

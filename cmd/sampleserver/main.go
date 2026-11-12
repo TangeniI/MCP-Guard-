@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log/slog"
 	"net/http"
@@ -13,7 +14,16 @@ import (
 
 func main() {
 	addr := flag.String("listen", "127.0.0.1:9001", "address to listen on")
+	stdio := flag.Bool("stdio", false, "serve over standard input and output instead of HTTP")
 	flag.Parse()
+
+	if *stdio {
+		if err := sampleserver.RunStdio(context.Background()); err != nil {
+			slog.Error("server stopped", "err", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	srv := &http.Server{Addr: *addr, Handler: sampleserver.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	slog.Info("sample MCP server listening", "addr", *addr)

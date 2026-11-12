@@ -116,6 +116,8 @@ type Event struct {
 	ScanDuration time.Duration // time spent scanning
 	ResultBytes  int           // size of the tool result that was scanned
 	ResultSHA256 string        // its hash, to match against the server's own logs
+	ToolsListed  int           // tools/list: tools shown to the agent
+	ToolsHidden  []string      // tools/list: "name: reason" for each tool withheld
 
 	ApprovalID       string        // set when a human was asked
 	ApprovedBy       string        // who answered, if anyone did
@@ -141,6 +143,10 @@ type Config struct {
 	// disables scanning, which must be a deliberate choice by the caller.
 	Scanner Scanner
 
+	// PinTools remembers the first definition seen for each tool and blocks
+	// a tool whose definition later changes.
+	PinTools bool
+
 	// Audit, if set, stores a record of every exchange. If a record cannot
 	// be stored the gateway stops serving until one can: no audit, no calls.
 	Audit Recorder
@@ -156,6 +162,11 @@ type Config struct {
 	// Transport is used for upstream calls. Nil means http.DefaultTransport.
 	Transport http.RoundTripper
 
+	// Transports overrides Transport for individual servers, by name. It
+	// is how non-HTTP upstreams (stdio servers) are plugged in; the URL in
+	// Upstreams is then only a placeholder.
+	Transports map[string]http.RoundTripper
+
 	// Logger receives one line per exchange. Nil means slog.Default().
 	Logger *slog.Logger
 
@@ -168,6 +179,7 @@ type Handler struct {
 	cfg       Config
 	mux       *http.ServeMux
 	auditDown atomic.Bool // the last audit record could not be stored
+	tools     *toolRegistry
 	upstreams map[string]*httputil.ReverseProxy
 	origins   map[string]struct{}
 }
@@ -195,6 +207,7 @@ func New(cfg Config) (*Handler, error) {
 		mux:       http.NewServeMux(),
 		upstreams: make(map[string]*httputil.ReverseProxy, len(cfg.Upstreams)),
 		origins:   make(map[string]struct{}, len(cfg.AllowedOrigins)),
+		tools:     newToolRegistry(),
 	}
 	for _, o := range cfg.AllowedOrigins {
 		h.origins[o] = struct{}{}
@@ -253,7 +266,7 @@ func (h *Handler) newReverseProxy(name string, target *url.URL) *httputil.Revers
 			// so the response hook always sees plain bytes.
 			pr.Out.Header.Del("Accept-Encoding")
 		},
-		Transport:      h.cfg.Transport,
+		Transport:      h.transportFor(name),
 		FlushInterval:  -1, // SSE: forward every event as it arrives
 		ModifyResponse: h.scanResponse,
 		ErrorLog:       slog.NewLogLogger(h.cfg.Logger.Handler(), slog.LevelWarn),
@@ -415,6 +428,17 @@ func (h *Handler) serveMCP(w http.ResponseWriter, r *http.Request) {
 		if !authorize(msg) {
 			return
 		}
+		if msg.Kind == KindRequest && msg.Method == "tools/call" {
+			if reason, detail := h.tools.blocked(name, msg.Tool); reason != "" {
+				ev.Denied, ev.Code, ev.Reason = true, reason, detail
+				text := "this tool's description was flagged as unsafe"
+				if reason == toolChanged {
+					text = "this tool's definition changed after it was first seen"
+				}
+				writeToolDenied(rec, msg.ID, "Denied by MCP Guard: "+text)
+				return
+			}
+		}
 		// Forward exactly the bytes that were inspected.
 		r.Body = io.NopCloser(bytes.NewReader(body))
 		r.ContentLength = int64(len(body))
@@ -441,6 +465,7 @@ func (h *Handler) serveMCP(w http.ResponseWriter, r *http.Request) {
 	ev.Scanned, ev.Quarantined = st.scanned, st.quarantined
 	ev.ScanVerdict, ev.ScanSource, ev.ScanRule, ev.ScanDetail = st.scan.Verdict, st.scan.Source, st.scan.Rule, st.scan.Detail
 	ev.ScanDuration, ev.ResultBytes, ev.ResultSHA256 = st.scan.Duration, st.resultBytes, st.resultHash
+	ev.ToolsListed, ev.ToolsHidden = st.toolsListed, st.toolsHidden
 }
 
 // originAllowed implements the Origin check the MCP spec requires of servers
@@ -536,4 +561,11 @@ func (s *statusRecorder) status() int {
 		return http.StatusOK
 	}
 	return s.code
+}
+
+func (h *Handler) transportFor(server string) http.RoundTripper {
+	if t, ok := h.cfg.Transports[server]; ok && t != nil {
+		return t
+	}
+	return h.cfg.Transport
 }

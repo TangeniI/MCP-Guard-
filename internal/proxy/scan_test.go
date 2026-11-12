@@ -194,11 +194,11 @@ func TestScanJSONResults(t *testing.T) {
 
 	t.Run("other methods are not scanned", func(t *testing.T) {
 		s := &wordScanner{}
-		reply := `{"jsonrpc":"2.0","id":7,"result":{"tools":[{"name":"x","description":"EVIL"}]}}`
+		reply := `{"jsonrpc":"2.0","id":7,"result":{"resources":[{"name":"x","description":"EVIL"}]}}`
 		_, _, body, ev := exchangeWith(t, s, upstreamReply{contentType: "application/json", body: reply},
-			`{"jsonrpc":"2.0","id":7,"method":"tools/list"}`)
+			`{"jsonrpc":"2.0","id":7,"method":"resources/list"}`)
 		if body != reply || ev.Scanned || len(s.seen) != 0 {
-			t.Errorf("tools/list was scanned or altered: %s", body)
+			t.Errorf("resources/list was scanned or altered: %s", body)
 		}
 	})
 

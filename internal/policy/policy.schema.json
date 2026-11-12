@@ -70,7 +70,7 @@
       }
     },
     "constraint": {
-      "description": "All listed conditions must hold.",
+      "description": "All listed conditions must hold. A listed argument is required unless optional is true. String conditions also accept a list of strings, each of which must pass.",
       "type": "object",
       "additionalProperties": false,
       "minProperties": 1,
@@ -84,8 +84,16 @@
         "prefix": { "type": "string", "minLength": 1 },
         "path_under": { "type": "string", "pattern": "^/" },
         "email_domain": { "type": "string", "pattern": "^[A-Za-z0-9.-]+$" },
-        "pattern": { "type": "string", "minLength": 1 },
-        "max_length": { "type": "integer", "minimum": 0 }
+        "pattern": {
+          "description": "RE2 regular expression that must match the whole value.",
+          "type": "string",
+          "minLength": 1
+        },
+        "max_length": { "type": "integer", "minimum": 0 },
+        "optional": {
+          "description": "The argument may be left out. If present, the conditions still apply.",
+          "type": "boolean"
+        }
       }
     }
   }

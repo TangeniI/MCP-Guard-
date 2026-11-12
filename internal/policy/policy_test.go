@@ -103,6 +103,8 @@ func TestParseInvalid(t *testing.T) {
 		"rate limit without value": minimal("tools:\n  t: {rate_limit: {}}\n"),
 		"allow_other without args": minimal("tools:\n  t: {allow_other_arguments: true}\n"),
 		"empty constraint":         minimal("tools:\n  t: {arguments: {path: {}}}\n"),
+		"only optional":            minimal("tools:\n  t: {arguments: {path: {optional: true}}}\n"),
+		"optional not a boolean":   minimal("tools:\n  t: {arguments: {path: {prefix: a, optional: 1}}}\n"),
 		"unknown constraint":       minimal("tools:\n  t: {arguments: {path: {starts_with: /workspace}}}\n"),
 		"bad regexp":               minimal("tools:\n  t: {arguments: {id: {pattern: \"([a-z\"}}}\n"),
 		"relative path_under":      minimal("tools:\n  t: {arguments: {path: {path_under: workspace}}}\n"),
@@ -270,24 +272,6 @@ func TestRateLimit(t *testing.T) {
 	now = now.Add(-time.Hour)
 	if d := call("search"); d.Allow {
 		t.Error("clock going backwards granted a call")
-	}
-}
-
-// TestArgumentRulesFailClosed pins the behaviour of the unimplemented
-// matcher: a tool with an "arguments" section is denied, whatever is sent.
-// Replace this test when the hand-written matcher lands.
-func TestArgumentRulesFailClosed(t *testing.T) {
-	p, err := Parse([]byte(minimal("tools:\n  write: {arguments: {path: {path_under: /workspace}}}\n")))
-	if err != nil {
-		t.Fatal(err)
-	}
-	e := NewEngine(p)
-	for _, args := range []string{``, `{}`, `{"path":"/workspace/a.txt"}`, `{"path":"/etc/passwd"}`, `[]`, `{"path":`} {
-		d := e.Decide(Request{Token: "test-token-alpha", Server: "files", Kind: KindRequest,
-			Method: "tools/call", Tool: "write", Arguments: json.RawMessage(args)})
-		if d.Allow || d.Code != CodeArgumentsRejected {
-			t.Errorf("arguments %q: got %s, want arguments_rejected", args, d.Code)
-		}
 	}
 }
 

@@ -11,6 +11,15 @@ agents:
           read_file: {}
           delete_file:
             requires_approval: true
+          write_file:
+            arguments:
+              path: {path_under: /workspace}
+              content: {max_length: 40}
+              overwrite: {equals: false, optional: true}
+          send_report:
+            allow_other_arguments: true
+            arguments:
+              to: {email_domain: example.com}
       mail: {}
   - name: beta
     token_sha256: 09454e35b80939a2d12023fad0ea0f343068522fb530476d6b7f47dd4d2720b5

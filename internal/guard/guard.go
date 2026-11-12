@@ -119,6 +119,8 @@ func (a AuditRecorder) Record(e proxy.Event) error {
 		ScanUS:         e.ScanDuration.Microseconds(),
 		ResultBytes:    e.ResultBytes,
 		ResultSHA256:   e.ResultSHA256,
+		ToolsListed:    e.ToolsListed,
+		ToolsHidden:    e.ToolsHidden,
 		Status:         e.Status,
 		DurationUS:     e.Duration.Microseconds(),
 		UpstreamUS:     e.UpstreamDuration.Microseconds(),
