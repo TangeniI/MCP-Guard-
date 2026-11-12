@@ -102,7 +102,7 @@ func TestQuarantineEndToEnd(t *testing.T) {
 	}
 
 	h := &approvalHarness{log: log}
-	records := h.toolRecords(t)
+	records := h.toolRecords(t, 2)
 	if len(records) != 2 {
 		t.Fatalf("want 2 tool records, got %d", len(records))
 	}

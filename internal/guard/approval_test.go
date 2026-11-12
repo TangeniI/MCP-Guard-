@@ -143,31 +143,44 @@ func denialText(t *testing.T, res *mcp.CallToolResult) string {
 	return res.Content[0].(*mcp.TextContent).Text
 }
 
-// auditRecords returns the audit records for tools/call, in order.
-func (h *approvalHarness) toolRecords(t *testing.T) []audit.Record {
+// toolRecords returns the audit records for tools/call, in order. A record
+// is written just after its response is sent, so it waits until at least
+// want of them are there.
+func (h *approvalHarness) toolRecords(t *testing.T, want int) []audit.Record {
 	t.Helper()
-	var buf bytes.Buffer
-	if _, err := h.log.Export(&buf); err != nil {
-		t.Fatalf("audit export: %v", err)
+	read := func() []audit.Record {
+		var buf bytes.Buffer
+		if _, err := h.log.Export(&buf); err != nil {
+			t.Fatalf("audit export: %v", err)
+		}
+		var out []audit.Record
+		for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+			if line == "" {
+				continue
+			}
+			var e audit.Entry
+			if err := json.Unmarshal([]byte(line), &e); err != nil {
+				t.Fatal(err)
+			}
+			var r audit.Record
+			if err := json.Unmarshal(e.Record, &r); err != nil {
+				t.Fatal(err)
+			}
+			if r.Agent != "alpha" || len(r.PolicyVersion) != 64 || r.Status == 0 || r.DurationUS <= 0 {
+				t.Errorf("audit record is incomplete: %+v", r)
+			}
+			if r.RPCMethod == "tools/call" {
+				out = append(out, r)
+			}
+		}
+		return out
 	}
-	var out []audit.Record
-	for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
-		var e audit.Entry
-		if err := json.Unmarshal([]byte(line), &e); err != nil {
-			t.Fatal(err)
-		}
-		var r audit.Record
-		if err := json.Unmarshal(e.Record, &r); err != nil {
-			t.Fatal(err)
-		}
-		if r.Agent != "alpha" || len(r.PolicyVersion) != 64 || r.Status == 0 || r.DurationUS <= 0 {
-			t.Errorf("audit record is incomplete: %+v", r)
-		}
-		if r.RPCMethod == "tools/call" {
-			out = append(out, r)
-		}
+	records := read()
+	for deadline := time.Now().Add(5 * time.Second); len(records) < want && time.Now().Before(deadline); {
+		time.Sleep(5 * time.Millisecond)
+		records = read()
 	}
-	return out
+	return records
 }
 
 func TestApprovalEndToEnd(t *testing.T) {
@@ -217,7 +230,7 @@ func TestApprovalEndToEnd(t *testing.T) {
 	}
 
 	// The audit log tells the whole story.
-	records := h.toolRecords(t)
+	records := h.toolRecords(t, 3)
 	if len(records) != 3 {
 		t.Fatalf("want 3 tool-call records, got %d", len(records))
 	}
@@ -243,7 +256,7 @@ func TestApprovalTimeoutIsDenial(t *testing.T) {
 	if !strings.Contains(text, "no human approved") {
 		t.Errorf("denial text = %q", text)
 	}
-	records := h.toolRecords(t)
+	records := h.toolRecords(t, 1)
 	if len(records) != 1 || records[0].Allowed || records[0].Code != "approval_timeout" || records[0].UpstreamUS != 0 {
 		t.Errorf("records = %+v", records)
 	}
@@ -255,7 +268,7 @@ func TestNoApproverIsDenial(t *testing.T) {
 	if !strings.Contains(text, "no approver is configured") {
 		t.Errorf("denial text = %q", text)
 	}
-	records := h.toolRecords(t)
+	records := h.toolRecords(t, 1)
 	if len(records) != 1 || records[0].Allowed || records[0].Code != "approval_unavailable" {
 		t.Errorf("records = %+v", records)
 	}
