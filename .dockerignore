@@ -1,0 +1,7 @@
+.git
+evals
+docs
+deploy
+**/.venv
+*.db
+*.db-*

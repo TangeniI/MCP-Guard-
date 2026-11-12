@@ -42,7 +42,7 @@ def main() -> None:
         scripted = agent["type"] != "llm"
         rows.append(
             [
-                agent["model"] or "none (scripted)",
+                (agent["model"] or "none (scripted)") + ("" if r.get("scope", "full benchmark") == "full benchmark" else " — " + ", ".join(r["suites"]) + f" ({benign.get('tasks', 0)} tasks, {attack.get('pairs', 0)} pairs)"),
                 guard_label(r["guard"]),
                 pct(benign.get("utility"), benign.get("tasks")),
                 pct(attack.get("utility"), attack.get("pairs")),

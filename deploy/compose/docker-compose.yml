@@ -1,0 +1,37 @@
+# Demo: a scripted agent talks to two MCP servers through MCP Guard.
+#
+#   docker compose -f deploy/compose/docker-compose.yml up --build --abort-on-container-exit
+#
+# Then, while it is still up in another terminal:
+#   curl -s localhost:9090/metrics | grep mcpguard_
+#
+# Nothing here needs a credential. The agent token in the demo policy is public.
+services:
+  notes:
+    build: {context: ../.., dockerfile: Dockerfile}
+    entrypoint: ["/usr/local/bin/sampleserver", "-listen", "0.0.0.0:9001"]
+
+  math:
+    build: {context: ../.., dockerfile: Dockerfile}
+    entrypoint: ["/usr/local/bin/sampleserver", "-listen", "0.0.0.0:9002"]
+
+  gateway:
+    build: {context: ../.., dockerfile: Dockerfile}
+    command:
+      - -listen=0.0.0.0:8080
+      - -metrics-listen=0.0.0.0:9090
+      - -policy=/etc/mcpguard/policy.yaml
+      - -upstream=notes=http://notes:9001
+      - -upstream=math=http://math:9002
+      - -audit-db=/tmp/audit.db
+    volumes:
+      - ../../examples/demo-policy.yaml:/etc/mcpguard/policy.yaml:ro
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:9090:9090"
+    depends_on: [notes, math]
+
+  agent:
+    build: {context: ../.., dockerfile: Dockerfile}
+    entrypoint: ["/usr/local/bin/sampleagent", "-gateway", "http://gateway:8080"]
+    depends_on: [gateway]
