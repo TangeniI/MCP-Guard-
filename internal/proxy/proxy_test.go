@@ -433,3 +433,55 @@ func TestNoAuditNoCalls(t *testing.T) {
 		t.Errorf("gateway did not recover: status %d", code)
 	}
 }
+
+// TestAbortedExchangeIsStillRecorded: when the client hangs up while the
+// response is being copied, the reverse proxy aborts the handler. The
+// exchange must still be recorded with what happened upstream.
+func TestAbortedExchangeIsStillRecorded(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"jsonrpc":"2.0","id":7,"result":{"content":[{"type":"text","text":"hello"}]}}`)
+	}))
+	defer upstream.Close()
+
+	var log eventLog
+	h, err := proxy.New(proxy.Config{
+		Upstreams:  map[string]*url.URL{"sample": mustURL(t, upstream.URL)},
+		Authorizer: proxy.AllowAll{},
+		Scanner:    &wordScanner{},
+		Logger:     quietLogger(),
+		OnEvent:    log.add,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/sample/mcp", strings.NewReader(toolCall))
+	// The reverse proxy only aborts by panicking when it is running under a
+	// real http.Server, which it detects through this context value.
+	req = req.WithContext(context.WithValue(req.Context(), http.ServerContextKey, &http.Server{}))
+	func() {
+		defer func() {
+			if r := recover(); r != http.ErrAbortHandler {
+				t.Errorf("handler ended with %v, want http.ErrAbortHandler", r)
+			}
+		}()
+		h.ServeHTTP(&failingWriter{header: http.Header{}}, req)
+	}()
+
+	events := log.snapshot()
+	if len(events) != 1 {
+		t.Fatalf("want 1 event, got %d", len(events))
+	}
+	ev := events[0]
+	if ev.UpstreamDuration <= 0 || !ev.Scanned || ev.ScanVerdict != "clean" || len(ev.ResultSHA256) != 64 {
+		t.Errorf("aborted exchange lost its upstream details: %+v", ev)
+	}
+}
+
+// failingWriter is a client that has gone away: every write fails.
+type failingWriter struct{ header http.Header }
+
+func (f *failingWriter) Header() http.Header       { return f.header }
+func (f *failingWriter) WriteHeader(int)           {}
+func (f *failingWriter) Write([]byte) (int, error) { return 0, errors.New("client disconnected") }
