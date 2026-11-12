@@ -26,6 +26,13 @@ Benign tasks that broke (false alarms, both held out):
 From the scanner's own held-out samples (`TestRulesHeldOutSet`): 19 of 22 injections missed, 3 of 22 clean
 samples flagged.
 
+## A cost, not a miss: quarantine breaks tasks under attack
+
+When a tool result is quarantined the agent loses all of it, including the data the user's task needed. In
+the Gemini pilot (banking suite, 12 attacked runs) the share of user tasks completed under attack fell from
+6 of 12 with the gateway off to 0 of 12 with rules scanning on, while the attack itself succeeded 0 times in
+both. See [ADR 2](adr/0002-rules-vs-llm-judge.md).
+
 ## Known gaps that are not yet in a test
 
 - **Results delivered on the older protocol's separate server-to-client stream** (HTTP GET) are not scanned.
@@ -49,8 +56,9 @@ through the gateway, what a server does internally, and chains of individually h
 
 ## What has not been measured at all
 
-- **Attack success rate with a capable model across the full AgentDojo benchmark.** See `evals/README.md` for
-  what has been run.
+- **Attack success rate across the full AgentDojo benchmark, with any model.** Only small pilots have been
+  run; see `evals/README.md`. No run so far shows the gateway lowering a model's attack success rate, because
+  the one hosted model tried resisted every attack on its own.
 - **The LLM judge.** It has never been run against the real API.
 - **A realistic static policy on AgentDojo.** Only a suite-wide allow-list and an oracle per-task policy.
 - **Any comparison with another gateway.**
