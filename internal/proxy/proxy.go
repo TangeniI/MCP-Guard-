@@ -459,13 +459,20 @@ func (h *Handler) serveMCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// What happened upstream is copied into the event in a defer, not after
+	// the call: the reverse proxy aborts the handler (by panicking with
+	// http.ErrAbortHandler) when the client hangs up while the response is
+	// still being copied, and that exchange must still be recorded in full.
+	// This defer runs before the one above that writes the audit record.
 	upstreamStart := time.Now()
+	defer func() {
+		ev.UpstreamDuration = time.Since(upstreamStart) - st.scan.Duration
+		ev.Scanned, ev.Quarantined = st.scanned, st.quarantined
+		ev.ScanVerdict, ev.ScanSource, ev.ScanRule, ev.ScanDetail = st.scan.Verdict, st.scan.Source, st.scan.Rule, st.scan.Detail
+		ev.ScanDuration, ev.ResultBytes, ev.ResultSHA256 = st.scan.Duration, st.resultBytes, st.resultHash
+		ev.ToolsListed, ev.ToolsHidden = st.toolsListed, st.toolsHidden
+	}()
 	upstream.ServeHTTP(rec, r)
-	ev.UpstreamDuration = time.Since(upstreamStart) - st.scan.Duration
-	ev.Scanned, ev.Quarantined = st.scanned, st.quarantined
-	ev.ScanVerdict, ev.ScanSource, ev.ScanRule, ev.ScanDetail = st.scan.Verdict, st.scan.Source, st.scan.Rule, st.scan.Detail
-	ev.ScanDuration, ev.ResultBytes, ev.ResultSHA256 = st.scan.Duration, st.resultBytes, st.resultHash
-	ev.ToolsListed, ev.ToolsHidden = st.toolsListed, st.toolsHidden
 }
 
 // originAllowed implements the Origin check the MCP spec requires of servers
