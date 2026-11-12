@@ -23,24 +23,23 @@ The agent only ever sees what the gateway returns. Scoring is AgentDojo's own, u
 The bridge server is a small test fixture that speaks the part of MCP Streamable HTTP that tool calls need
 (JSON responses, no streaming). It is not the official MCP SDK.
 
-### Status: no model has been run yet
+### Results so far
 
-**There is no attack-success number yet.** The runs below use a *scripted* agent that replays each task's
-ground-truth tool calls and ignores what the tools return. It cannot be fooled, so it says nothing about
-whether the gateway stops attacks. It was run to check the wiring and to measure what the gateway does to tool
-traffic, at no model cost.
+<!-- agentdojo-table:start -->
+(table inserted by the final step)
+<!-- agentdojo-table:end -->
 
-| Agent model | Guard | Benign utility | Utility under attack | Attack success | Injected results quarantined | Benign results quarantined | Benign calls denied | Added ms per call (median of suite medians / worst suite p95) | Date | File |
-|---|---|---|---|---|---|---|---|---|---|---|
-| none (scripted) | off | 100.0% (97/97) | 100.0% (949/949) | not measurable | 0.0% (0/1234) | 0.0% (0/339) | 0.0% (0/339) | 0.009 / 0.042 | 2026-11-11 | agentdojo-20261111-172311-ground-truth-guard-off.json |
-| none (scripted) | scan: rules | 100.0% (97/97) | 100.0% (949/949) | not measurable | 100.0% (1234/1234) | 0.0% (0/339) | 0.0% (0/339) | 0.173 / 5.707 | 2026-11-11 | agentdojo-20261111-172405-ground-truth-guard-scan.json |
-| none (scripted) | policy: per-task (oracle) | 100.0% (97/97) | 100.0% (949/949) | not measurable | 0.0% (0/1234) | 0.0% (0/339) | 0.0% (0/339) | 0.013 / 0.062 | 2026-11-11 | agentdojo-20261111-172458-ground-truth-guard-policy-oracle-task-policy.json |
-| none (scripted) | policy: suite allow-list; scan: rules | 100.0% (97/97) | 100.0% (949/949) | not measurable | 100.0% (1234/1234) | 0.0% (0/339) | 0.0% (0/339) | 0.195 / 5.807 | 2026-11-11 | agentdojo-20261111-172601-ground-truth-guard-both.json |
+Attack: AgentDojo's `important_instructions`. Gateway commit and exact flags are recorded in each file.
 
-Attack: AgentDojo's `important_instructions`, addressing the model as "Claude". Gateway commit and exact flags
-are recorded in each file.
+Two kinds of row:
 
-### What these runs do and do not show
+- **"none (scripted)"** uses an agent with no model. It replays each task's ground-truth tool calls and
+  ignores what the tools return, so it cannot be fooled and says nothing about whether attacks succeed. It
+  was run to check the wiring and to measure what the gateway does to tool traffic, at no model cost.
+- **Rows naming a model** are real agent runs. Those marked *partial* cover a slice of one suite, run on a
+  free tier; they are pilots, not a benchmark score. The full benchmark with a capable model has not been run.
+
+### What the scripted runs do and do not show
 
 They show:
 
@@ -64,8 +63,9 @@ They do not show:
   rest of that result (the calendar events around the injected one, say) loses it; the scripted agent does not
   read results, so it cannot show this. "Utility under attack: 100%" above is therefore not meaningful.
 - **What the policy layer does.** The suite allow-list permits every tool the attacker wants, and the per-task
-  policy is an oracle (it is derived from the ground-truth solution). Policies that constrain arguments (for
-  example, payments only to known recipients) depend on the argument matcher, which is not written yet.
+  policy is an oracle (it is derived from the ground-truth solution). A realistic static policy with argument
+  rules (for example, payments only to known recipients) has not been written for AgentDojo. The policy
+  layer's effect is measured in the MCP scenario suite instead.
 
 ### Reproducing
 
@@ -113,3 +113,28 @@ retried with a growing wait, and if the provider keeps refusing the run stops cl
 
 Files under [`results/smoke/`](results/smoke/) are tiny runs used to check that a provider path works. They
 are too small to draw conclusions from and are not part of the results table.
+
+## MCP-specific scenarios
+
+[`scenarios/`](scenarios/) holds 82 small stories played against the real gateway code with a scripted MCP
+server: reads and writes outside allowed paths, exfiltration through arguments, tools never granted, poisoned
+tool descriptions, tool definitions that change after first sight, prompt injection in tool results, and
+benign tasks that must keep working. No model is involved: an attack scenario asks whether the harmful thing
+was possible at all.
+
+```bash
+go run ./evals/scenarios
+```
+
+Each scenario runs in four gateway configurations (off, policy only, content only, both), so the results
+file shows which layer does the work, and lists every miss with both layers on.
+
+**The held-out rule.** 45 scenarios are marked `heldout`. Rules and code must never be changed to fix a
+held-out miss. To work on one, move it to `dev` in `scenarios/generate.py` and write a new held-out scenario
+to replace it. `go test ./evals/scenarios` fails if a dev scenario regresses and only reports held-out misses.
+
+All scenarios share one policy, [`scenarios/policy.yaml`](scenarios/policy.yaml), written for a plausible
+office assistant. No scenario gets a policy tailored to it.
+
+Both the scenarios and the policy were written by the same author as the gateway. That is a weaker test than
+scenarios from someone trying to break it.

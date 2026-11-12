@@ -1,14 +1,16 @@
 """Print a Markdown table from evals/results/agentdojo-*.json.
 
-    evals/agentdojo/.venv/bin/python evals/agentdojo/summarize.py
+    evals/agentdojo/.venv/bin/python evals/agentdojo/summarize.py [--write]
 
-Tables in the docs are pasted from this output, never typed by hand.
+--write puts the table into README.md and evals/README.md between their
+"agentdojo-table" markers. Tables in the docs are never typed by hand.
 """
 
 from __future__ import annotations
 
 import json
 import statistics
+import sys
 from pathlib import Path
 
 RESULTS = Path(__file__).resolve().parents[1] / "results"
@@ -61,10 +63,18 @@ def main() -> None:
         "Injected results quarantined", "Benign results quarantined", "Benign calls denied",
         "Added ms per call (median of suite medians / worst suite p95)", "Date", "File",
     ]  # fmt: skip
-    print("| " + " | ".join(header) + " |")
-    print("|" + "---|" * len(header))
-    for row in rows:
-        print("| " + " | ".join(row) + " |")
+    lines = ["| " + " | ".join(header) + " |", "|" + "---|" * len(header)]
+    lines += ["| " + " | ".join(row) + " |" for row in rows]
+    table = "\n".join(lines)
+    print(table)
+
+    if "--write" in sys.argv:
+        start, end = "<!-- agentdojo-table:start -->", "<!-- agentdojo-table:end -->"
+        for doc in (RESULTS.parents[1] / "README.md", RESULTS.parents[0] / "README.md"):
+            text = doc.read_text()
+            a, b = text.index(start) + len(start), text.index(end)
+            doc.write_text(text[:a] + "\n" + table + "\n" + text[b:])
+            print("updated", doc)
 
 
 if __name__ == "__main__":
