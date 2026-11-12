@@ -26,7 +26,14 @@ The bridge server is a small test fixture that speaks the part of MCP Streamable
 ### Results so far
 
 <!-- agentdojo-table:start -->
-(table inserted by the final step)
+| Agent model | Guard | Benign utility | Utility under attack | Attack success | Injected results quarantined | Benign results quarantined | Benign calls denied | Added ms per call (median of suite medians / worst suite p95) | Date | File |
+|---|---|---|---|---|---|---|---|---|---|---|
+| none (scripted) | off | 100.0% (97/97) | 100.0% (949/949) | not measurable | 0.0% (0/1234) | 0.0% (0/339) | 0.0% (0/339) | 0.009 / 0.042 | 2026-11-11 | agentdojo-20261111-172311-ground-truth-guard-off.json |
+| none (scripted) | scan: rules | 100.0% (97/97) | 100.0% (949/949) | not measurable | 100.0% (1234/1234) | 0.0% (0/339) | 0.0% (0/339) | 0.173 / 5.707 | 2026-11-11 | agentdojo-20261111-172405-ground-truth-guard-scan.json |
+| none (scripted) | policy: per-task (oracle) | 100.0% (97/97) | 100.0% (949/949) | not measurable | 0.0% (0/1234) | 0.0% (0/339) | 0.0% (0/339) | 0.013 / 0.062 | 2026-11-11 | agentdojo-20261111-172458-ground-truth-guard-policy-oracle-task-policy.json |
+| none (scripted) | policy: suite allow-list; scan: rules | 100.0% (97/97) | 100.0% (949/949) | not measurable | 100.0% (1234/1234) | 0.0% (0/339) | 0.0% (0/339) | 0.195 / 5.807 | 2026-11-11 | agentdojo-20261111-172601-ground-truth-guard-both.json |
+| gemini-3.5-flash-lite — banking (4 tasks, 12 pairs) | off | 100.0% (4/4) | 50.0% (6/12) | 0.0% (0/12) | 0.0% (0/15) | 0.0% (0/10) | 0.0% (0/10) | 0.104 / 0.553 | 2026-11-12 (partial) | agentdojo-20261112T124857Z-gemini-3.5-flash-lite-guard-off-pilot.json |
+| gemini-3.5-flash-lite — banking (4 tasks, 12 pairs) | scan: rules | 100.0% (4/4) | 0.0% (0/12) | 0.0% (0/12) | 100.0% (13/13) | 0.0% (0/11) | 0.0% (0/11) | 0.689 / 3.751 | 2026-11-12 (partial) | agentdojo-20261112T125822Z-gemini-3.5-flash-lite-guard-scan-pilot.json |
 <!-- agentdojo-table:end -->
 
 Attack: AgentDojo's `important_instructions`. Gateway commit and exact flags are recorded in each file.

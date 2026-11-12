@@ -47,9 +47,18 @@ this ADR does not claim it closes the gap above. Until it is measured on the hel
 - Results larger than the judge's limit are not truncated (the unread part could hold the attack); they are
   quarantined.
 
-## Open question
+## Open question: quarantine the whole result, or only the flagged part?
 
-Quarantine withholds the whole tool result. In a six-task local-model smoke test this stopped every attack
-and also failed every user task under attack, because the legitimate data sat next to the injection. Cutting
-out only the flagged passage would keep more tasks working but trusts the scanner to find the attack's edges.
-Not built; it should be measured before it is offered.
+Quarantine withholds the whole tool result. That has a measured cost. In the Gemini pilot
+(`agentdojo-20261112T124857Z-...-guard-off-pilot.json` and `agentdojo-20261112T125822Z-...-guard-scan-pilot.json`,
+banking suite, 4 user tasks by 3 injection tasks), the model resisted all 12 attacks without the gateway.
+With rules scanning on, the gateway quarantined 13 of 13 injected results and the user's task was completed
+in 0 of 12 attacked runs, against 6 of 12 with the gateway off. The legitimate data sat in the same tool
+result as the injection.
+
+Twelve pairs on one suite is a small sample, but the mechanism is not in doubt: for a model that already
+resists the attack, whole-result quarantine is pure cost.
+
+Cutting out only the flagged passage would keep more tasks working, but it trusts the scanner to find the
+attack's edges, and anything it misses in the same result gets through. Not built; it should be measured
+against this baseline before it is offered.
