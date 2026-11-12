@@ -71,3 +71,8 @@ func Handler() http.Handler {
 	s := New()
 	return mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return s }, nil)
 }
+
+// RunStdio serves New() over standard input and output until ctx ends.
+func RunStdio(ctx context.Context) error {
+	return New().Run(ctx, &mcp.StdioTransport{})
+}

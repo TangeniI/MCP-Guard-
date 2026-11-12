@@ -47,7 +47,7 @@ from agentdojo.task_suite.load_suites import get_suites
 
 from agentdojo.agent_pipeline.base_pipeline_element import BasePipelineElement
 
-from bridge import BridgeServer, GatewayClient, GatewayGroundTruth, GatewayToolsExecutor, squash
+from bridge import BridgeServer, GatewayClient, GatewayError, GatewayGroundTruth, GatewayToolsExecutor, squash
 
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
@@ -208,9 +208,15 @@ class QuotaExhausted(RuntimeError):
 
 
 def is_rate_limit(error: Exception) -> bool:
+    """True for errors worth waiting out: rate limits, exhausted quota and a
+    temporarily overloaded or unavailable provider."""
     code = getattr(error, "status_code", None) or getattr(error, "code", None)
     text = f"{type(error).__name__} {error}".lower()
-    return code == 429 or "resource_exhausted" in text or "ratelimit" in text or "rate limit" in text or "quota" in text
+    return (
+        code in (429, 500, 502, 503, 529)
+        or any(word in text for word in ("resource_exhausted", "ratelimit", "rate limit", "quota",
+                                         "unavailable", "overloaded", "high demand"))  # fmt: skip
+    )
 
 
 class ThrottledLLM(BasePipelineElement):
@@ -239,8 +245,9 @@ class ThrottledLLM(BasePipelineElement):
                 if not is_rate_limit(e):
                     raise
                 self.rate_limited += 1
-                if attempt == self.max_retries:
-                    raise QuotaExhausted(str(e)[:300]) from e
+                if "per day" in str(e).lower() or attempt == self.max_retries:
+                    # A daily quota will not recover by waiting a few minutes.
+                    raise QuotaExhausted(" ".join(str(e).split())[:700]) from e
                 delay = min(300, 15 * 2**attempt)
                 print(f"    rate limited; waiting {delay}s (attempt {attempt + 1}/{self.max_retries})", flush=True)
                 time.sleep(delay)
@@ -253,6 +260,10 @@ def make_llm(args) -> ThrottledLLM:
     if args.provider == "google":
         from agentdojo.agent_pipeline import GoogleLLM
         from google import genai
+
+        import gemini_compat
+
+        gemini_compat.apply()  # Gemini 3 thought signatures; see that file
 
         # A plain client uses an AI Studio key from GEMINI_API_KEY or
         # GOOGLE_API_KEY (AgentDojo's own default is Vertex AI instead).
@@ -362,8 +373,8 @@ def run_suite(suite_name: str, suite, args, binary: Path, run_dir: Path) -> dict
                 error = None
                 try:
                     utility, security = suite.run_task_with_pipeline(pipeline_for(task), task, inj_task, injections)
-                except QuotaExhausted:
-                    raise
+                except (QuotaExhausted, GatewayError):
+                    raise  # the run itself is broken; never score that as a task failure
                 except Exception as e:  # a model or tool failure counts against the run, visibly
                     if llm is None:
                         raise
@@ -385,8 +396,13 @@ def run_suite(suite_name: str, suite, args, binary: Path, run_dir: Path) -> dict
                 outcome = f"utility={row['utility']}" + ("" if inj_id is None else f" attack_succeeded={row['attack_succeeded']}")
                 if llm is not None or inj_id is None:
                     print(f"  {suite_name} {task_id} {kind}: {outcome}" + (f" ERROR {error}" if error else ""), flush=True)
-    except (QuotaExhausted, KeyboardInterrupt) as e:
-        stopped = "interrupted by user" if isinstance(e, KeyboardInterrupt) else f"provider quota exhausted: {e}"
+    except (QuotaExhausted, GatewayError, KeyboardInterrupt) as e:
+        if isinstance(e, KeyboardInterrupt):
+            stopped = "interrupted by user"
+        elif isinstance(e, GatewayError):
+            stopped = f"gateway failure: {e}"
+        else:
+            stopped = f"provider quota exhausted: {e}"
     finally:
         gateway.stop()
         bridge.stop()
@@ -564,6 +580,7 @@ def main() -> None:
     out.write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report["totals"], indent=2))
     print(f"wrote {out.relative_to(ROOT)}")
+    binary.unlink(missing_ok=True)  # ~30 MB per run adds up; --resume rebuilds it
     if stopped:
         print(f"STOPPED: {stopped}\nresume with: run.py --resume {run_dir.relative_to(ROOT)}")
         raise SystemExit(2)

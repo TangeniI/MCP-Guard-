@@ -55,6 +55,9 @@ type exchange struct {
 	quarantined bool
 	resultBytes int
 	resultHash  string
+
+	toolsListed int      // tools/list: tools passed on to the agent
+	toolsHidden []string // tools/list: "name: reason" for each tool removed
 }
 
 // scanResponse is the ReverseProxy ModifyResponse hook. For tools/call it
@@ -63,7 +66,16 @@ type exchange struct {
 // cannot establish that the result is clean, the result is withheld.
 func (h *Handler) scanResponse(resp *http.Response) error {
 	st, _ := resp.Request.Context().Value(ctxKey{}).(*exchange)
-	if h.cfg.Scanner == nil || st == nil || st.msg.Kind != KindRequest || st.msg.Method != "tools/call" {
+	if st == nil || st.msg.Kind != KindRequest {
+		return nil
+	}
+	var process func(context.Context, *exchange, []byte) []byte
+	switch {
+	case st.msg.Method == "tools/call" && h.cfg.Scanner != nil:
+		process = h.scanMessage
+	case st.msg.Method == "tools/list" && (h.cfg.Scanner != nil || h.cfg.PinTools):
+		process = h.filterToolList
+	default:
 		return nil
 	}
 	ctx := resp.Request.Context()
@@ -72,7 +84,7 @@ func (h *Handler) scanResponse(resp *http.Response) error {
 
 	var out []byte
 	if mediaType == "text/event-stream" {
-		out = h.scanEventStream(ctx, st, resp.Body)
+		out = h.scanEventStream(ctx, st, resp.Body, process)
 	} else {
 		raw, err := io.ReadAll(io.LimitReader(resp.Body, MaxResultBytes+1))
 		switch {
@@ -81,7 +93,7 @@ func (h *Handler) scanResponse(resp *http.Response) error {
 		case len(raw) > MaxResultBytes:
 			out = h.withhold(st, nil, "too_large", "tool result larger than the scan limit")
 		default:
-			out = h.scanMessage(ctx, st, raw)
+			out = process(ctx, st, raw)
 		}
 		resp.Header.Set("Content-Type", "application/json")
 	}
@@ -134,6 +146,13 @@ func (h *Handler) scanMessage(ctx context.Context, st *exchange, raw []byte) []b
 func (h *Handler) withhold(st *exchange, id json.RawMessage, verdict, detail string) []byte {
 	st.scanned, st.quarantined = true, true
 	st.scan = ScanOutcome{Verdict: verdict, Source: "gateway", Detail: detail}
+	if st.msg.Method == "tools/list" {
+		st.toolsHidden = append(st.toolsHidden, "(all): "+verdict)
+		if len(id) == 0 {
+			id = st.msg.ID
+		}
+		return emptyToolList(id)
+	}
 	return quarantineNotice(id, st.msg)
 }
 
@@ -258,7 +277,8 @@ func (e *sseEvent) withData(data []byte) *sseEvent {
 // request, scans that response and returns the stream to send on. Events
 // before it (progress and log notifications) pass through unchanged; reading
 // stops at the response, which ends the exchange.
-func (h *Handler) scanEventStream(ctx context.Context, st *exchange, body io.Reader) []byte {
+func (h *Handler) scanEventStream(ctx context.Context, st *exchange, body io.Reader,
+	process func(context.Context, *exchange, []byte) []byte) []byte {
 	var out bytes.Buffer
 	final := func(payload []byte) []byte {
 		(&sseEvent{lines: []string{"event: message", "data: " + string(payload)}}).write(&out)
@@ -281,7 +301,7 @@ func (h *Handler) scanEventStream(ctx context.Context, st *exchange, body io.Rea
 		}
 		current.data = strings.Join(dataLines, "\n")
 		if isRPCResponse(current.data) {
-			current.withData(h.scanMessage(ctx, st, []byte(current.data))).write(&out)
+			current.withData(process(ctx, st, []byte(current.data))).write(&out)
 			return out.Bytes()
 		}
 		// Every MCP event carries one JSON-RPC message. An event whose

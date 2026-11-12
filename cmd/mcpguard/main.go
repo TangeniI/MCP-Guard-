@@ -29,9 +29,11 @@ import (
 	"github.com/TangeniI/MCP-Guard-/internal/audit"
 	"github.com/TangeniI/MCP-Guard-/internal/guard"
 	"github.com/TangeniI/MCP-Guard-/internal/judge"
+	"github.com/TangeniI/MCP-Guard-/internal/metrics"
 	"github.com/TangeniI/MCP-Guard-/internal/policy"
 	"github.com/TangeniI/MCP-Guard-/internal/proxy"
 	"github.com/TangeniI/MCP-Guard-/internal/scan"
+	"github.com/TangeniI/MCP-Guard-/internal/stdio"
 )
 
 type upstreamFlags map[string]*url.URL
@@ -51,6 +53,24 @@ func (u upstreamFlags) Set(v string) error {
 		return err
 	}
 	u[name] = target
+	return nil
+}
+
+// stdioFlags collects -upstream-stdio name=command values.
+type stdioFlags map[string][]string
+
+func (f stdioFlags) String() string { return fmt.Sprintf("%d stdio servers", len(f)) }
+
+func (f stdioFlags) Set(v string) error {
+	name, command, ok := strings.Cut(v, "=")
+	argv := strings.Fields(command)
+	if !ok || len(argv) == 0 {
+		return errors.New("want name=command [args...]")
+	}
+	if _, dup := f[name]; dup {
+		return fmt.Errorf("server %q given twice", name)
+	}
+	f[name] = argv
 	return nil
 }
 
@@ -120,6 +140,9 @@ func run(logger *slog.Logger, args []string) error {
 	approvers := approverFlags{}
 	listen := fs.String("listen", "127.0.0.1:8080", "address agents connect to")
 	fs.Var(upstreams, "upstream", "MCP server as name=url (repeatable); served at /{name}/mcp")
+	stdioServers := stdioFlags{}
+	fs.Var(stdioServers, "upstream-stdio", "stdio MCP server as name=command [args...] (repeatable); started by the gateway")
+	metricsListen := fs.String("metrics-listen", "", "address for Prometheus metrics at /metrics (off if empty)")
 	policyPath := fs.String("policy", "", "path to the policy YAML file (required unless -insecure-allow-all)")
 	allowAll := fs.Bool("insecure-allow-all", false, "run with no policy and allow everything (evaluation baseline only)")
 	auditPath := fs.String("audit-db", "mcpguard-audit.db", "audit database file (created if missing)")
@@ -129,8 +152,27 @@ func run(logger *slog.Logger, args []string) error {
 	scanMode := fs.String("scan", "rules", "tool-result scanning: rules, judge, rules+judge, or off")
 	judgeModel := fs.String("judge-model", judge.DefaultModel, "Claude model for the LLM judge")
 	judgeTimeout := fs.Duration("judge-timeout", scan.DefaultJudgeTimeout, "how long to wait for the judge before treating the result as unsafe")
+	pinTools := fs.Bool("pin-tools", true, "block a tool whose definition changes after the gateway first saw it")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	// Stdio servers are started here and presented to the proxy as upstreams.
+	transports := map[string]http.RoundTripper{}
+	for name, argv := range stdioServers {
+		if _, dup := upstreams[name]; dup {
+			return fmt.Errorf("server %q is given as both -upstream and -upstream-stdio", name)
+		}
+		t, err := stdio.Start(ctx, argv, logger)
+		if err != nil {
+			return err
+		}
+		defer t.Close()
+		transports[name] = t
+		upstreams[name] = &url.URL{Scheme: "http", Host: "stdio.invalid", Path: "/mcp"}
 	}
 
 	// Result scanning. Turning it off has to be asked for by name.
@@ -226,11 +268,15 @@ func run(logger *slog.Logger, args []string) error {
 	}
 	defer auditLog.Close()
 
+	counters := metrics.New()
 	handler, err := proxy.New(proxy.Config{
 		Upstreams:  upstreams,
+		Transports: transports,
+		OnEvent:    counters.Observe,
 		Authorizer: authorizer,
 		Approver:   approver,
 		Scanner:    scanner,
+		PinTools:   *pinTools,
 		Audit:      guard.AuditRecorder{Log: auditLog},
 		Logger:     logger,
 	})
@@ -238,14 +284,21 @@ func run(logger *slog.Logger, args []string) error {
 		return err
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
 	// No WriteTimeout on the gateway: SSE responses and calls waiting for
 	// approval are long-lived.
 	servers := []*http.Server{{Addr: *listen, Handler: handler, ReadHeaderTimeout: 10 * time.Second}}
 	if admin != nil {
 		servers = append(servers, &http.Server{Addr: *adminListen, Handler: admin,
+			ReadHeaderTimeout: 10 * time.Second, WriteTimeout: 30 * time.Second})
+	}
+
+	if *metricsListen != "" {
+		if *metricsListen == *listen {
+			return errors.New("-metrics-listen must differ from -listen")
+		}
+		mux := http.NewServeMux()
+		mux.Handle("GET /metrics", counters)
+		servers = append(servers, &http.Server{Addr: *metricsListen, Handler: mux,
 			ReadHeaderTimeout: 10 * time.Second, WriteTimeout: 30 * time.Second})
 	}
 

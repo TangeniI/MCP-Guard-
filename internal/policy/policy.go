@@ -90,9 +90,14 @@ type Constraint struct {
 	PathUnder   *string `json:"path_under"`   // path is inside this directory
 	EmailDomain *string `json:"email_domain"` // address is at exactly this domain
 	Pattern     *string `json:"pattern"`      // RE2 regular expression
-	MaxLength   *int    `json:"max_length"`   // string length limit
+	MaxLength   *int    `json:"max_length"`   // string length limit, in characters
 
-	// Regexp is Pattern compiled, set by Parse when Pattern is set.
+	// Optional lets the argument be left out. If it is present, every
+	// condition still applies. Without it, a listed argument is required.
+	Optional bool `json:"optional"`
+
+	// Regexp is Pattern compiled and anchored to match a whole value, set
+	// by Parse when Pattern is set.
 	Regexp *regexp.Regexp `json:"-"`
 }
 
@@ -265,7 +270,12 @@ func validateConstraint(c *Constraint) error {
 	}
 	if c.Pattern != nil {
 		set++
-		re, err := regexp.Compile(*c.Pattern)
+		if _, err := regexp.Compile(*c.Pattern); err != nil {
+			return fmt.Errorf("pattern: %w", err)
+		}
+		// Anchor the whole pattern so it must match the entire value:
+		// an unanchored "safe" would otherwise accept "unsafe; rm -rf /".
+		re, err := regexp.Compile(`\A(?:` + *c.Pattern + `)\z`)
 		if err != nil {
 			return fmt.Errorf("pattern: %w", err)
 		}
