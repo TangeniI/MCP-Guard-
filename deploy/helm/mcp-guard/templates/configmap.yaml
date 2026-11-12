@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-policy
+  labels:
+    app.kubernetes.io/name: mcp-guard
+    app.kubernetes.io/instance: {{ .Release.Name }}
+data:
+  policy.yaml: |
+{{ .Values.policy | indent 4 }}

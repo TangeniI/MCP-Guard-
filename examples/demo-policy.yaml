@@ -1,0 +1,19 @@
+# Policy for the docker compose demo: one agent, two MCP servers.
+# The token is the public demo value "demo-token-not-a-secret".
+version: 1
+agents:
+  - name: demo-agent
+    token_sha256: 44208d1d531756cedf3af84a5bf971bb1e99ad1ec275a5141f599239d7e31313
+    servers:
+      notes:
+        tools:
+          read_note:
+            arguments:
+              id: {pattern: "[a-z0-9-]{1,40}"}
+      math:
+        tools:
+          add:
+            rate_limit: {per_minute: 30}
+          echo:
+            arguments:
+              text: {max_length: 200}

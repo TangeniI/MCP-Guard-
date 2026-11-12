@@ -1,0 +1,13 @@
+/bin/
+/dist/
+*.test
+*.out
+.DS_Store
+*.db
+*.db-shm
+*.db-wal
+
+# Credentials live in the environment, never in the repository.
+.env
+.env.*
+!.env.example
