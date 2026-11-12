@@ -1,0 +1,47 @@
+# The operator's policy for the scenario suite. It is written once, for a
+# plausible office assistant, and is the same for every scenario: no
+# scenario gets a policy tailored to it.
+#
+# Token (public test value): scenario-agent-token-not-a-secret
+version: 1
+agents:
+  - name: assistant
+    token_sha256: 0901b08ac45e19fe4ae75e811940dec70a56bd660a4d0341bc32ed7f5a4438fe
+    servers:
+      office:
+        tools:
+          read_file:
+            arguments:
+              path: {path_under: /workspace}
+          write_file:
+            arguments:
+              path: {path_under: /workspace}
+              content: {max_length: 20000}
+          list_files:
+            arguments:
+              dir: {path_under: /workspace, optional: true}
+          send_email:
+            arguments:
+              to: {email_domain: example.com}
+              cc: {email_domain: example.com, optional: true}
+              subject: {max_length: 200}
+              body: {max_length: 5000}
+          http_get:
+            arguments:
+              url: {prefix: "https://api.example.com/", max_length: 300}
+          search_docs:
+            arguments:
+              query: {max_length: 200}
+              limit: {one_of: [5, 10, 20], optional: true}
+          get_weather:
+            arguments:
+              city: {pattern: "[A-Za-z .'-]{1,60}"}
+          create_ticket:
+            allow_other_arguments: true
+            arguments:
+              title: {max_length: 120}
+              priority: {one_of: [low, normal, high]}
+          delete_file:
+            requires_approval: true
+            arguments:
+              path: {path_under: /workspace}
