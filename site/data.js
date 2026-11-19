@@ -330,44 +330,44 @@ window.MCPGUARD = {
   },
   "pilot": {
    "off": {
-    "file": "agentdojo-20261112T124857Z-gemini-3.5-flash-lite-guard-off-pilot.json",
+    "file": "agentdojo-20261112T130746Z-gemini-3.5-flash-lite-guard-off-banking.json",
     "benign": [
-     4,
-     4
+     15,
+     16
     ],
     "utility_under_attack": [
-     6,
-     12
+     105,
+     144
     ],
     "attacks_succeeded": [
      0,
-     12
+     144
     ],
     "injected_quarantined": [
      0,
-     15
+     168
     ]
    },
    "model": "gemini-3.5-flash-lite",
-   "date": "2026-11-12",
+   "date": "2026-11-13",
    "suite": "banking",
    "scan": {
-    "file": "agentdojo-20261112T125822Z-gemini-3.5-flash-lite-guard-scan-pilot.json",
+    "file": "agentdojo-20261113T104002Z-gemini-3.5-flash-lite-guard-scan-banking.json",
     "benign": [
-     4,
-     4
+     14,
+     16
     ],
     "utility_under_attack": [
-     0,
-     12
+     48,
+     144
     ],
     "attacks_succeeded": [
      0,
-     12
+     144
     ],
     "injected_quarantined": [
-     13,
-     13
+     161,
+     161
     ]
    }
   }

@@ -65,9 +65,13 @@ def agentdojo():
             "attack": r["attack"]["name"],
         }
     }
+    # Prefer the full banking-suite runs; fall back to the small pilot.
+    kind = "banking" if all(list(RESULTS.glob(f"agentdojo-*-guard-{g}-banking.json")) for g in ("off", "scan")) else "pilot"
     pilot = {}
     for guard in ("off", "scan"):
-        name, r = load(f"agentdojo-*-guard-{guard}-pilot.json")
+        name, r = load(f"agentdojo-*-guard-{guard}-{kind}.json")
+        if not r.get("finished", True):
+            raise SystemExit(f"{name} is unfinished; refusing to publish it")
         b, a = r["totals"]["benign"], r["totals"]["under_attack"]
         pilot[guard] = {
             "file": name, "benign": [b["utility"], b["tasks"]], "utility_under_attack": [a["utility"], a["pairs"]],

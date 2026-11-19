@@ -35,7 +35,7 @@ The bridge server is a small test fixture that speaks the part of MCP Streamable
 | gemini-3.5-flash-lite — banking (4 tasks, 12 pairs) | off | 100.0% (4/4) | 50.0% (6/12) | 0.0% (0/12) | 0.0% (0/15) | 0.0% (0/10) | 0.0% (0/10) | 0.104 / 0.553 | 2026-11-12 (partial) | agentdojo-20261112T124857Z-gemini-3.5-flash-lite-guard-off-pilot.json |
 | gemini-3.5-flash-lite — banking (4 tasks, 12 pairs) | scan: rules | 100.0% (4/4) | 0.0% (0/12) | 0.0% (0/12) | 100.0% (13/13) | 0.0% (0/11) | 0.0% (0/11) | 0.689 / 3.751 | 2026-11-12 (partial) | agentdojo-20261112T125822Z-gemini-3.5-flash-lite-guard-scan-pilot.json |
 | gemini-3.5-flash-lite — banking (16 tasks, 144 pairs) | off | 93.8% (15/16) | 72.9% (105/144) | 0.0% (0/144) | 0.0% (0/168) | 0.0% (0/52) | 0.0% (0/52) | 0.148 / 0.662 | 2026-11-12 (partial) | agentdojo-20261112T130746Z-gemini-3.5-flash-lite-guard-off-banking.json |
-| gemini-3.5-flash-lite — banking (16 tasks, 53 pairs) | scan: rules | 87.5% (14/16) | 15.1% (8/53) | 0.0% (0/53) | 100.0% (56/56) | 0.0% (0/54) | 0.0% (0/54) | 0.661 / 1.523 | 2026-11-13 (UNFINISHED) | agentdojo-20261113T104002Z-gemini-3.5-flash-lite-guard-scan-banking.json |
+| gemini-3.5-flash-lite — banking (16 tasks, 144 pairs) | scan: rules | 87.5% (14/16) | 33.3% (48/144) | 0.0% (0/144) | 100.0% (161/161) | 0.0% (0/54) | 0.0% (0/54) | 0.656 / 1.779 | 2026-11-13 (partial) | agentdojo-20261113T104002Z-gemini-3.5-flash-lite-guard-scan-banking.json |
 <!-- agentdojo-table:end -->
 
 Attack: AgentDojo's `important_instructions`. Gateway commit and exact flags are recorded in each file.
@@ -45,8 +45,8 @@ Two kinds of row:
 - **"none (scripted)"** uses an agent with no model. It replays each task's ground-truth tool calls and
   ignores what the tools return, so it cannot be fooled and says nothing about whether attacks succeed. It
   was run to check the wiring and to measure what the gateway does to tool traffic, at no model cost.
-- **Rows naming a model** are real agent runs. Those marked *partial* cover a slice of one suite, run on a
-  free tier; they are pilots, not a benchmark score. The full benchmark with a capable model has not been run.
+- **Rows naming a model** are real agent runs on a free tier. Those marked *partial* cover one suite, or a
+  slice of it, and are not a benchmark score. The full four-suite benchmark has not been run with a model.
 
 ### What the scripted runs do and do not show
 

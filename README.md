@@ -58,7 +58,7 @@ it caught every phrasing it was written with and none of the held-out rewordings
 | gemini-3.5-flash-lite — banking (4 tasks, 12 pairs) | off | 100.0% (4/4) | 50.0% (6/12) | 0.0% (0/12) | 0.0% (0/15) | 0.0% (0/10) | 0.0% (0/10) | 0.104 / 0.553 | 2026-11-12 (partial) | agentdojo-20261112T124857Z-gemini-3.5-flash-lite-guard-off-pilot.json |
 | gemini-3.5-flash-lite — banking (4 tasks, 12 pairs) | scan: rules | 100.0% (4/4) | 0.0% (0/12) | 0.0% (0/12) | 100.0% (13/13) | 0.0% (0/11) | 0.0% (0/11) | 0.689 / 3.751 | 2026-11-12 (partial) | agentdojo-20261112T125822Z-gemini-3.5-flash-lite-guard-scan-pilot.json |
 | gemini-3.5-flash-lite — banking (16 tasks, 144 pairs) | off | 93.8% (15/16) | 72.9% (105/144) | 0.0% (0/144) | 0.0% (0/168) | 0.0% (0/52) | 0.0% (0/52) | 0.148 / 0.662 | 2026-11-12 (partial) | agentdojo-20261112T130746Z-gemini-3.5-flash-lite-guard-off-banking.json |
-| gemini-3.5-flash-lite — banking (16 tasks, 53 pairs) | scan: rules | 87.5% (14/16) | 15.1% (8/53) | 0.0% (0/53) | 100.0% (56/56) | 0.0% (0/54) | 0.0% (0/54) | 0.661 / 1.523 | 2026-11-13 (UNFINISHED) | agentdojo-20261113T104002Z-gemini-3.5-flash-lite-guard-scan-banking.json |
+| gemini-3.5-flash-lite — banking (16 tasks, 144 pairs) | scan: rules | 87.5% (14/16) | 33.3% (48/144) | 0.0% (0/144) | 100.0% (161/161) | 0.0% (0/54) | 0.0% (0/54) | 0.656 / 1.779 | 2026-11-13 (partial) | agentdojo-20261113T104002Z-gemini-3.5-flash-lite-guard-scan-banking.json |
 <!-- agentdojo-table:end -->
 
 Read these with care:
@@ -68,13 +68,14 @@ Read these with care:
   attacks succeed.
 - **"Injected results quarantined: 100%" is one fixed public template** matched by one rule. See the held-out
   figures above for how the same rules do on wording they were not written for.
-- **Model runs so far are small pilots** on a free tier; they are labelled partial and are not a benchmark
-  score.
-- **The pilot shows the cost, not the benefit.** On a 4-task, 12-attack slice of the banking suite,
-  `gemini-3.5-flash-lite` resisted all 12 attacks with the gateway off, so there was nothing for the gateway
-  to reduce. With rules scanning on, every injected result was quarantined (13 of 13) and the share of user
-  tasks still completed under attack fell from 6 of 12 to 0 of 12: withholding a whole tool result also
-  withholds the data the task needed. Benign tasks with no attack present were unaffected (4 of 4 both ways).
+- **The model runs cover one suite of four**, on a free-tier model. They are labelled partial and are not a
+  benchmark score.
+- **The model run shows the cost, not the benefit.** On the banking suite (16 tasks, 144 attacked runs),
+  `gemini-3.5-flash-lite` resisted all 144 attacks with the gateway off, so there was nothing for the gateway
+  to reduce. With rules scanning on, every injected result was quarantined (161 of 161) and the share of user
+  tasks still completed under attack fell from 105 of 144 to 48 of 144: withholding a whole tool result also
+  withholds the data the task needed. With no attack present, 15 of 16 tasks completed with the gateway off
+  and 14 of 16 with scanning on, and no benign result was quarantined (0 of 54).
 
 ## What it does
 
