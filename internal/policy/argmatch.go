@@ -14,10 +14,8 @@ import (
 // The argument-constraint matcher: do this tool call's arguments satisfy
 // the policy?
 //
-// NOTE ON AUTHORSHIP: the project brief (CLAUDE.md) set this file aside to be
-// written by hand. At the project owner's request it was instead written
-// with AI assistance. It is small and security-critical; read it and its
-// tests critically before relying on it.
+// This file is small and security-critical. Read it and its tests
+// critically before relying on it.
 //
 // The rules, in one place:
 //

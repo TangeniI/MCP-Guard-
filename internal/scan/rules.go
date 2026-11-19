@@ -12,8 +12,8 @@ import (
 // The rules describe general shapes of injection (override the instructions,
 // impersonate the system, address the agent, hijack the task, hide from the
 // user, exfiltrate). They deliberately contain no strings copied from any
-// benchmark's attack templates: see CLAUDE.md, "never tune rules against the
-// test scenarios without holding some back".
+// benchmark's attack templates, and they must never be adjusted against the
+// held-out samples: see "The held-out rule" in evals/README.md.
 type rule struct {
 	id string
 	re *regexp.Regexp
