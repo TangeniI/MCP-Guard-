@@ -54,6 +54,8 @@ it caught every phrasing it was written with and none of the held-out rewordings
 | none (scripted) | policy: suite allow-list; scan: rules | 100.0% (97/97) | 100.0% (949/949) | not measurable | 100.0% (1234/1234) | 0.0% (0/339) | 0.0% (0/339) | 0.195 / 5.807 | 2026-11-11 | agentdojo-20261111-172601-ground-truth-guard-both.json |
 | gemini-3.5-flash-lite — banking (4 tasks, 12 pairs) | off | 100.0% (4/4) | 50.0% (6/12) | 0.0% (0/12) | 0.0% (0/15) | 0.0% (0/10) | 0.0% (0/10) | 0.104 / 0.553 | 2026-11-12 (partial) | agentdojo-20261112T124857Z-gemini-3.5-flash-lite-guard-off-pilot.json |
 | gemini-3.5-flash-lite — banking (4 tasks, 12 pairs) | scan: rules | 100.0% (4/4) | 0.0% (0/12) | 0.0% (0/12) | 100.0% (13/13) | 0.0% (0/11) | 0.0% (0/11) | 0.689 / 3.751 | 2026-11-12 (partial) | agentdojo-20261112T125822Z-gemini-3.5-flash-lite-guard-scan-pilot.json |
+| gemini-3.5-flash-lite — banking (16 tasks, 144 pairs) | off | 93.8% (15/16) | 72.9% (105/144) | 0.0% (0/144) | 0.0% (0/168) | 0.0% (0/52) | 0.0% (0/52) | 0.148 / 0.662 | 2026-11-12 (partial) | agentdojo-20261112T130746Z-gemini-3.5-flash-lite-guard-off-banking.json |
+| gemini-3.5-flash-lite — banking (16 tasks, 53 pairs) | scan: rules | 87.5% (14/16) | 15.1% (8/53) | 0.0% (0/53) | 100.0% (56/56) | 0.0% (0/54) | 0.0% (0/54) | 0.661 / 1.523 | 2026-11-13 (UNFINISHED) | agentdojo-20261113T104002Z-gemini-3.5-flash-lite-guard-scan-banking.json |
 <!-- agentdojo-table:end -->
 
 Read these with care:
