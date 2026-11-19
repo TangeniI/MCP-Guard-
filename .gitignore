@@ -12,3 +12,7 @@
 .env.*
 !.env.example
 .Rhistory
+
+# Private working notes; kept locally, not published.
+/CLAUDE.md
+/docs/portfolio-brief.md

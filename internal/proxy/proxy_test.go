@@ -76,7 +76,7 @@ func text(t *testing.T, res *mcp.CallToolResult) string {
 	return tc.Text
 }
 
-// TestPassThrough is the milestone 1 integration test: a real MCP client
+// TestPassThrough is the core integration test: a real MCP client
 // talks to a real MCP server through the gateway and sees exactly what it
 // would see talking to the server directly.
 func TestPassThrough(t *testing.T) {

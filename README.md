@@ -1,5 +1,8 @@
 # MCP Guard
 
+[![CI](https://github.com/TangeniI/MCP-Guard-/actions/workflows/ci.yml/badge.svg)](https://github.com/TangeniI/MCP-Guard-/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A small security gateway that sits between an AI agent and its MCP servers. Every tool call goes through it.
 It enforces a least-privilege policy, asks a human before dangerous actions, scans what tools return for
 prompt injection, and keeps an append-only audit log.
@@ -160,10 +163,14 @@ supplies their own, through the provider's usual environment variable.
 
 ## Status and limits
 
-- Built with heavy AI assistance, including the argument matcher that the project brief had set aside to be
-  written by hand. Read `internal/policy/argmatch.go` and its tests before relying on it.
+- The argument matcher (`internal/policy/argmatch.go`) is small and security-critical. Read it and its tests
+  before relying on it.
 - The LLM judge has never been run against the real API; its accuracy and cost are unknown.
 - The Docker image is built and started in CI. The compose demo has only been run as the same processes
   outside Docker, and the Helm chart passes `helm lint` and renders but has not been installed on a cluster.
 - SQLite only for the audit log; rate limits, tool pins and pending approvals are in memory, per process.
 - Not compared against any other gateway.
+
+## Licence
+
+[MIT](LICENSE).
