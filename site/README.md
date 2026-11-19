@@ -20,14 +20,11 @@ python3 -m http.server 8000 --directory site
 
 Then open http://127.0.0.1:8000/.
 
-## Hosting (both free)
+## Hosting
 
-**Vercel.** Import the GitHub repository, set **Root Directory** to `site`, leave the framework as "Other"
-and the build command empty. Vercel can deploy from a private repository.
+The page is hosted on Vercel at https://mcp-guard-nine.vercel.app. The Vercel project is connected to this
+repository with its root directory set to `site`, so every push to `main` redeploys it and every pull request
+gets a preview. There is no build step.
 
-**GitHub Pages.** In the repository's settings, under Pages, choose "Deploy from a branch" and serve the
-`site` folder, or copy the two files to a `docs`-style Pages folder. On a free GitHub account, Pages needs the
-repository to be public.
-
-The page links to the GitHub repository and to three documents in it. Those links only work for visitors
-once the repository is public.
+After adding results, run `python3 site/build.py` and commit the regenerated `data.js`; the deploy follows the
+merge.
