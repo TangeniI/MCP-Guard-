@@ -427,11 +427,11 @@ $("st-tasks").textContent = sc.tasks;
 $("st-quar").replaceChildren(document.createTextNode(sc.injected_quarantined.toLocaleString("en-GB") + " "), el("small", null, "of " + sc.injected.toLocaleString("en-GB")));
 $("st-false").textContent = sc.benign_quarantined + " of " + sc.benign_results;
 $("st-ms").replaceChildren(document.createTextNode(sc.added_ms_median.toFixed(1) + " "), el("small", null, "ms"));
-$("pilot-text").textContent = "On a small slice of the " + p.suite + " suite with " + p.model + ", the model resisted all "
+$("pilot-text").textContent = "On the benchmark's " + p.suite + " suite with " + p.model + ", the model resisted all "
   + p.off.attacks_succeeded[1] + " attacks without the gateway, so there was nothing for the gateway to reduce. With scanning on, the user's task was still completed in "
   + p.scan.utility_under_attack[0] + " of " + p.scan.utility_under_attack[1] + " attacked runs, against "
   + p.off.utility_under_attack[0] + " of " + p.off.utility_under_attack[1] + " with the gateway off: withholding a whole tool result also withholds the data the task needed.";
-$("pilot-caveat").textContent = "A free-tier pilot of " + p.off.utility_under_attack[1] + " attacked runs, not a benchmark score. No run so far shows the gateway lowering a model's attack success rate.";
+$("pilot-caveat").textContent = p.off.utility_under_attack[1] + " attacked runs on one suite of four, with a free-tier model; not a full benchmark score. No run so far shows the gateway lowering a model's attack success rate.";
 $("src-agentdojo").textContent = "Sources: evals/results/" + sc.file + "; " + p.off.file + "; " + p.scan.file + ". Attack: " + sc.attack + ".";
 </script>
 </body>

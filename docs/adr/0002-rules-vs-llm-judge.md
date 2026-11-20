@@ -49,15 +49,15 @@ this ADR does not claim it closes the gap above. Until it is measured on the hel
 
 ## Open question: quarantine the whole result, or only the flagged part?
 
-Quarantine withholds the whole tool result. That has a measured cost. In the Gemini pilot
-(`agentdojo-20261112T124857Z-...-guard-off-pilot.json` and `agentdojo-20261112T125822Z-...-guard-scan-pilot.json`,
-banking suite, 4 user tasks by 3 injection tasks), the model resisted all 12 attacks without the gateway.
-With rules scanning on, the gateway quarantined 13 of 13 injected results and the user's task was completed
-in 0 of 12 attacked runs, against 6 of 12 with the gateway off. The legitimate data sat in the same tool
-result as the injection.
+Quarantine withholds the whole tool result. That has a measured cost. On AgentDojo's banking suite with
+`gemini-3.5-flash-lite` (16 user tasks by 9 injection tasks, 144 attacked runs;
+`agentdojo-20261112T130746Z-...-guard-off-banking.json` and `agentdojo-20261113T104002Z-...-guard-scan-banking.json`),
+the model resisted all 144 attacks without the gateway. With rules scanning on, the gateway quarantined 161 of
+161 injected results and the user's task was completed in 48 of 144 attacked runs, against 105 of 144 with the
+gateway off. The legitimate data sat in the same tool result as the injection.
 
-Twelve pairs on one suite is a small sample, but the mechanism is not in doubt: for a model that already
-resists the attack, whole-result quarantine is pure cost.
+This is one suite and one model, but the mechanism is not in doubt: for a model that already resists the
+attack, whole-result quarantine is pure cost.
 
 Cutting out only the flagged passage would keep more tasks working, but it trusts the scanner to find the
 attack's edges, and anything it misses in the same result gets through. Not built; it should be measured
